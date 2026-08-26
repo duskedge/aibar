@@ -68,6 +68,10 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
         run: ./scripts/sign-and-notarize.sh .build/manual/aibar.app
 
+      # 发布前必须真的跑一次。构建成功不等于能启动。
+      - name: 启动冒烟测试
+        run: ./scripts/smoke-test.sh .build/manual/aibar.app 10
+
       - name: 打 DMG
         run: ./scripts/make-dmg.sh .build/manual/aibar.app "${{ steps.ver.outputs.tag }}"
 

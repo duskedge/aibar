@@ -58,6 +58,10 @@ jobs:
           # 动态库必须走 @rpath —— 相对路径只在 cwd 恰好正确时能跑，
           # 通过 open 启动（cwd=/）必然崩
           otool -L "$APP/Contents/MacOS/aibar" | grep -q '@rpath/libAibarCore.dylib'
+      # 只构建不运行，就会让"启动即崩"的包一路发出去 —— v0.5.0 就是这么出的事。
+      - name: 启动冒烟测试
+        run: ./scripts/smoke-test.sh .build/manual/aibar.app 10
+
       - uses: actions/upload-artifact@v4
         with:
           name: aibar-app-unsigned

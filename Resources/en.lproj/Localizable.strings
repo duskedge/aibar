@@ -216,3 +216,9 @@
 "每日用量，按来源堆叠" = "Daily usage, stacked by source";
 "已用 %@" = "%@ used";
 "预算已用 %@" = "%@ of budget used";
+
+/* ---- 通知 ---- */
+"%@ 额度即将耗尽" = "%@ quota almost exhausted";
+"%@ 额度告警" = "%@ quota warning";
+"%@已用 %@" = "%@ is %@ used";
+"，%@后重置" = ", resets in %@";

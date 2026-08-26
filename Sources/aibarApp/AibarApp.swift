@@ -61,7 +61,7 @@ struct MenuBarLabel: View {
             WindowPresenter.open(WindowID.disclosure, using: openWindow)
         }
         .task {
-            Notifications.requestAuthorizationIfNeeded()
+            await Notifications.requestAuthorizationIfNeeded()
             await model.start()
             // `open -a aibar --args --dashboard` 直接进仪表盘。
             // 也让主窗口这条链路能被脚本验证，不必去合成点击真实菜单栏。
