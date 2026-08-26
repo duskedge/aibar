@@ -22,16 +22,55 @@ func writePNG(_ view: some View, to path: String, scale: CGFloat = 2) throws -> 
 
 @MainActor
 func render() async throws {
-    let args = CommandLine.arguments
-    let out = args.count > 1 ? args[1] : "panel.png"
-    let dbPath = args.count > 2 ? args[2] : UsageStore.defaultPath
+    let args = CommandLine.arguments.dropFirst()
+
+    // 位置参数与 --flag 必须分开收，否则 `shot out.png --lang en` 会把
+    // "--lang" 当成数据库路径打开一个空库 —— 踩过一次。
+    var positional: [String] = []
+    var flags: [String: String] = [:]
+    var it = args.makeIterator()
+    while let a = it.next() {
+        if a.hasPrefix("--") {
+            let key = String(a.dropFirst(2))
+            if key == "offline" { flags[key] = "true" } else { flags[key] = it.next() ?? "" }
+        } else if a.hasPrefix("-") {
+            // 单横线的留给 Foundation 的 NSArgumentDomain，比如
+            //   aibar-shot out.png -AppleLanguages "(en)"
+            // 语言必须走这条路：运行时再写 UserDefaults 已经晚了，
+            // Bundle 在第一次本地化查找时就把语言定死了。
+            _ = it.next()
+        } else {
+            positional.append(a)
+        }
+    }
+
+    // 自检：确认本地化资源真的能被找到。
+    // 通过符号链接调用本工具会让 Bundle.main 指向链接所在目录，
+    // .lproj 找不到、本地化静默回落成中文 —— 踩过一次，所以留着这个开关。
+    if flags["diag"] != nil {
+        let b = Bundle.main
+        print("bundlePath:            \(b.bundlePath)")
+        print("bundleIdentifier:      \(b.bundleIdentifier ?? "nil")")
+        print("localizations:         \(b.localizations)")
+        print("preferredLocalizations:\(b.preferredLocalizations)")
+        print("AppleLanguages:        \(UserDefaults.standard.stringArray(forKey: "AppleLanguages") ?? [])")
+        print("查找 今日 →            \(L("今日"))")
+        print("查找 %lld 个会话 →     \(L("%lld 个会话", 3))")
+        if let path = b.path(forResource: "Localizable", ofType: "strings", inDirectory: nil, forLocalization: "en") {
+            print("en.strings 路径:       \(path)")
+        } else { print("en.strings 路径:       未找到") }
+        return
+    }
+
+    let out = positional.first ?? "panel.png"
+    let dbPath = positional.count > 1 ? positional[1] : UsageStore.defaultPath
 
     let store = try UsageStore(path: dbPath)
     let reports = Reports(store: store)
     var snapshot = try reports.snapshot()
 
     // 除非 --offline，否则拉一次 L2，让截图反映真实状态而不是半截空环
-    if !CommandLine.arguments.contains("--offline") {
+    if flags["offline"] == nil {
         let service = LiveQuotaService(config: .init(offline: false, enabled: [.claudeCode]))
         let live = await service.refresh(force: true)
         snapshot.liveQuotas = live.quotas

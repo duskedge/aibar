@@ -75,7 +75,7 @@ public struct Reports {
             GROUP BY k
             ORDER BY 2 DESC
             """, binds) { r in
-            out.append(Bucket(key: r.text(0) ?? "(未知)", tokens: r.int(1),
+            out.append(Bucket(key: r.text(0) ?? L("(未知)"), tokens: r.int(1),
                               input: r.int(2), output: r.int(3),
                               cacheRead: r.int(4), cacheWrite: r.int(5),
                               cost: r.doubleOrNil(6), sessions: r.int(7), events: r.int(8)))
@@ -226,7 +226,7 @@ public struct Reports {
             out.append(Snapshot.SessionRow(
                 id: "\(p.rawValue)-\(r.text(0) ?? "")",
                 provider: p,
-                project: path.isEmpty ? "(未知)" : URL(fileURLWithPath: path).lastPathComponent,
+                project: path.isEmpty ? L("(未知)") : URL(fileURLWithPath: path).lastPathComponent,
                 model: r.text(6) ?? "—",
                 tokens: r.int(4), cost: r.doubleOrNil(5),
                 lastActive: Date(timeIntervalSince1970: Double(r.int(2)))))
@@ -372,7 +372,7 @@ public struct Reports {
                 id: "\(prov.rawValue)-\(r.text(0) ?? "")",
                 sessionId: r.text(0) ?? "",
                 provider: prov,
-                project: path.isEmpty ? "(未知)" : URL(fileURLWithPath: path).lastPathComponent,
+                project: path.isEmpty ? L("(未知)") : URL(fileURLWithPath: path).lastPathComponent,
                 projectPath: path.isEmpty ? nil : path,
                 branch: r.text(5),
                 model: r.text(14) ?? "—",

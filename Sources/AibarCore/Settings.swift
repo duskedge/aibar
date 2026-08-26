@@ -6,10 +6,10 @@ public enum MenuBarDisplay: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .quota: "额度"
-        case .cost: "今日成本"
-        case .tokens: "今日 Token"
-        case .iconOnly: "仅图标"
+        case .quota: L("额度")
+        case .cost: L("今日成本")
+        case .tokens: L("今日 Token")
+        case .iconOnly: L("仅图标")
         }
     }
 }
@@ -30,6 +30,7 @@ public enum SettingsKey {
     public static let menuBarShowWindowName = "menuBarShowWindowName"
     public static let menuBarShowReset = "menuBarShowReset"
     public static let budgets = "budgets"
+    public static let language = "interfaceLanguage"
 }
 
 public struct Thresholds: Sendable {
@@ -73,7 +74,7 @@ public enum MenuBarTarget: RawRepresentable, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .tightest: "最紧张的一家"
+        case .tightest: L("最紧张的一家")
         case .provider(let p): p.displayName
         }
     }
@@ -85,9 +86,9 @@ public enum MenuBarWindow: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .tightest: "用得最多的窗口"
-        case .shortest: "最短窗口"
-        case .longest: "最长窗口"
+        case .tightest: L("用得最多的窗口")
+        case .shortest: L("最短窗口")
+        case .longest: L("最长窗口")
         }
     }
 }

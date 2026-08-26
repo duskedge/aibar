@@ -50,18 +50,22 @@ public enum Fmt {
         let days = Int(s) / 86400
         let hours = (Int(s) % 86400) / 3600
         let minutes = (Int(s) % 3600) / 60
-        if days > 0 { return hours > 0 ? "\(days) 天 \(hours) 小时" : "\(days) 天" }
-        if hours > 0 { return minutes > 0 ? "\(hours) 小时 \(minutes) 分" : "\(hours) 小时" }
-        return "\(max(1, minutes)) 分钟"
+        if days > 0 {
+            return hours > 0 ? L("%lld 天 %lld 小时", days, hours) : L("%lld 天", days)
+        }
+        if hours > 0 {
+            return minutes > 0 ? L("%lld 小时 %lld 分", hours, minutes) : L("%lld 小时", hours)
+        }
+        return L("%lld 分钟", max(1, minutes))
     }
 
     /// “刚刚 / 3 分钟前 / 昨天 14:20”
     public static func relative(_ date: Date, now: Date = .now) -> String {
         let delta = now.timeIntervalSince(date)
-        if delta < 60 { return "刚刚" }
-        if delta < 3600 { return "\(Int(delta / 60)) 分钟前" }
-        if delta < 86400 { return "\(Int(delta / 3600)) 小时前" }
-        if delta < 86400 * 2 { return "昨天" }
+        if delta < 60 { return L("刚刚") }
+        if delta < 3600 { return L("%lld 分钟前", Int(delta / 60)) }
+        if delta < 86400 { return L("%lld 小时前", Int(delta / 3600)) }
+        if delta < 86400 * 2 { return L("昨天") }
         let f = DateFormatter()
         f.dateFormat = delta < 86400 * 300 ? "M月d日" : "yyyy/M/d"
         return f.string(from: date)
@@ -71,7 +75,7 @@ public enum Fmt {
     public static func delta(_ current: Double, _ previous: Double) -> String? {
         guard previous > 0 else { return nil }
         let pct = (current - previous) / previous * 100
-        guard abs(pct) >= 1 else { return "持平" }
+        guard abs(pct) >= 1 else { return L("持平") }
         return "\(pct > 0 ? "▲" : "▼") \(String(format: "%.0f%%", abs(pct)))"
     }
 }

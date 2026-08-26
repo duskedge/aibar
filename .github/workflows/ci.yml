@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 构建与测试
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift 版本
+        run: swift --version
+
+      - name: 构建
+        run: swift build -v
+
+      # 测试进程一律不许读凭据、不许联网。
+      # 曾经有一次单测的 L2 默认是开的，直接弹出了开发者的钥匙串授权框。
+      - name: 测试
+        run: swift test
+        env:
+          AIBAR_NO_CREDENTIALS: "1"
+
+  network-allowlist:
+    name: 域名白名单
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # aibar 默认联网并读取用户凭据。"只连这几个域名"必须是能被验证的事实，
+      # 而不是 README 里的一句承诺 —— 所以它是一道会让构建失败的门。
+      - name: 检查出网地址与凭据处理
+        run: ./scripts/check-network.sh
+
+  app:
+    name: 打包 .app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建应用包
+        run: ./scripts/build-app.sh
+      - name: 校验包结构
+        run: |
+          set -euo pipefail
+          APP=.build/manual/aibar.app
+          test -f "$APP/Contents/MacOS/aibar"
+          test -f "$APP/Contents/Info.plist"
+          # 菜单栏应用不该出现在 Dock
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$APP/Contents/Info.plist" | grep -q true
+          # 动态库必须走 @rpath —— 相对路径只在 cwd 恰好正确时能跑，
+          # 通过 open 启动（cwd=/）必然崩
+          otool -L "$APP/Contents/MacOS/aibar" | grep -q '@rpath/libAibarCore.dylib'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aibar-app-unsigned
+          path: .build/manual/aibar.app
+          retention-days: 7

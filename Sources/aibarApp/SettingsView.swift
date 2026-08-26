@@ -69,6 +69,18 @@ struct SettingsView: View {
                 }
             }
 
+            Section("界面语言") {
+                Picker("界面语言", selection: Binding(
+                    get: { model.language },
+                    set: { model.language = $0 })) {
+                    ForEach(Localization.Language.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                Text("切换后需要重启 aibar 才会生效 —— SwiftUI 在启动时就把语言定下来了。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("额度告警") {
                 HStack {
                     Text("警告").font(.caption).frame(width: 32, alignment: .leading)
@@ -143,7 +155,7 @@ struct SettingsView: View {
                     }
                     if let progress = model.snapshot.budget(for: p) {
                         HStack {
-                            Text("当前 \(Fmt.cost(progress.spentUSD)) / \(Fmt.cost(progress.limitUSD))")
+                            Text(L("当前 %@ / %@", Fmt.cost(progress.spentUSD), Fmt.cost(progress.limitUSD)))
                                 .font(.caption).foregroundStyle(.secondary)
                             Spacer()
                             Text(Fmt.percent(progress.usedPercent))
@@ -225,7 +237,7 @@ struct SettingsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("本次运行的全部网络请求").font(.system(size: 12, weight: .medium))
-                    Text("\(model.networkLog.count) 次 · 全部命中白名单")
+                    Text(L("%lld 次 · 全部命中白名单", model.networkLog.count))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -329,7 +341,7 @@ struct SettingsView: View {
 
             VStack(spacing: 3) {
                 Text("成本为按公开 API 价格的估算值，非实际账单。")
-                Text("价格表版本 \(PricingTable.builtin.version)")
+                Text(L("价格表版本 %@", PricingTable.builtin.version))
                 Text("零第三方依赖 · MIT License")
             }
             .font(.caption2).foregroundStyle(.tertiary)

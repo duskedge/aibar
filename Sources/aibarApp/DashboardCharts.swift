@@ -97,9 +97,10 @@ struct RankBars: View {
                         .foregroundStyle(.tertiary)
                         .frame(width: 34, alignment: .trailing)
                 }
+                .accessibilityElement(children: .combine)
             }
             if buckets.count > limit {
-                Text("另有 \(buckets.count - limit) 项")
+                Text(L("另有 %lld 项", buckets.count - limit))
                     .font(.system(size: 10)).foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -117,7 +118,7 @@ struct TimelineChart: View {
 
     var body: some View {
         if points.count < 2 {
-            Text("该会话只有 \(points.count) 轮，画不出曲线")
+            Text(L("该会话只有 %lld 轮，画不出曲线", points.count))
                 .font(.system(size: 11)).foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, minHeight: 90)
         } else {

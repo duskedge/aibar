@@ -138,7 +138,9 @@ extension QuotaStatus {
 
     public var windowDescription: String {
         if let windowLabel { return windowLabel }
-        return windowMinutes >= 1440 ? "\(windowMinutes / 1440) 天窗口" : "\(windowMinutes / 60) 小时窗口"
+        return windowMinutes >= 1440
+            ? L("%lld 天窗口", windowMinutes / 1440)
+            : L("%lld 小时窗口", windowMinutes / 60)
     }
 
     /// 这条额度还有多新。日志型额度只在用户跑对话时才更新，

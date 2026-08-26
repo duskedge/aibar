@@ -1,0 +1,36 @@
+name: 新增 Provider
+description: 希望 aibar 支持另一个 AI 编程助手
+labels: [provider]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: 工具名称与官网
+    validations: { required: true }
+  - type: input
+    id: path
+    attributes:
+      label: 它把会话日志写在哪
+      placeholder: 例如 ~/.foo/sessions/**/*.jsonl
+    validations: { required: true }
+  - type: textarea
+    id: usage
+    attributes:
+      label: 用量记录长什么样（脱敏）
+      description: 哪一行/哪个字段带 token 计数
+      render: json
+    validations: { required: true }
+  - type: textarea
+    id: quota
+    attributes:
+      label: 有没有官方额度？在哪
+      description: |
+        请先看该 CLI **自己的界面**有没有显示额度。如果有，那数据一定来自某处 ——
+        先找本地日志（不一定在会话目录里），再考虑接口。
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: 参与意愿
+      options:
+        - label: 我可以提供脱敏样本
+        - label: 我可以自己提 PR 实现

@@ -37,5 +37,5 @@ extension Thresholds.Level {
 }
 
 extension QuotaStatus.Source {
-    var label: String { self == .localLog ? "本地日志" : "官方接口" }
+    var label: String { L(self == .localLog ? "本地日志" : "官方接口") }
 }

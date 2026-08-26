@@ -77,7 +77,7 @@ struct PopoverView: View {
             // 用按钮而不是 Toggle：面板只有 352pt 宽，开关控件太占地方，
             // 而且按钮能把动作写清楚（"切到离线" 比一个开关更不容易点错）。
             Button { model.toggleOffline() } label: {
-                Text(model.offlineMode ? "恢复联网" : "切到离线")
+                Text(L(model.offlineMode ? "恢复联网" : "切到离线"))
                     .font(.system(size: 10.5, weight: .medium))
                     .padding(.horizontal, 7).padding(.vertical, 2)
                     .background(Capsule().fill(.quaternary.opacity(0.8)))
@@ -96,7 +96,7 @@ struct PopoverView: View {
     }
 
     private var networkText: String {
-        if model.offlineMode { return "离线模式 · 仅本地数据" }
+        if model.offlineMode { return L("离线模式 · 仅本地数据") }
         if model.snapshot.isQuotaBackingOff {
             if let wait = model.snapshot.timeUntilQuotaRetry {
                 return "官方接口限流中，\(Fmt.duration(wait))后重试"
@@ -104,11 +104,11 @@ struct PopoverView: View {
             return "官方接口限流中，稍后自动重试"
         }
         let live = model.snapshot.liveQuotas.count
-        if live > 0 { return "已连接 · \(live) 条实时额度" }
+        if live > 0 { return L("已连接 · %lld 条实时额度", live) }
         if let why = model.snapshot.quotaFailures.values.first {
-            return why.contains("429") ? "官方接口限流中，稍后自动重试" : "官方接口未连接"
+            return L(why.contains("429") ? "官方接口限流中，稍后自动重试" : "官方接口未连接")
         }
-        return "已连接"
+        return L("已连接")
     }
 
     // MARK: - 主体
@@ -172,16 +172,16 @@ struct PopoverView: View {
                     .font(.system(size: 27, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("\(Fmt.tokens(s.today.tokens)) tokens")
+                    Text(L("%@ tokens", Fmt.tokens(s.today.tokens)))
                         .font(.system(size: 11)).monospacedDigit()
-                    Text("\(s.today.sessions) 个会话 · 缓存命中 \(Fmt.percent(s.today.cacheHitRate * 100))")
+                    Text(L("%lld 个会话 · 缓存命中 %@", s.today.sessions, Fmt.percent(s.today.cacheHitRate * 100)))
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
 
             if let delta = Fmt.delta(s.today.cost, s.yesterday.cost) {
-                Text("\(delta)　对比昨日 \(Fmt.cost(s.yesterday.cost))")
+                Text(L("%@　对比昨日 %@", delta, Fmt.cost(s.yesterday.cost)))
                     .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
             }
 
@@ -209,7 +209,7 @@ struct PopoverView: View {
                         Spacer()
                         // 零用量的一家不隐藏 —— 空态可见，用户才知道数据是全的
                         if stat.tokens == 0 {
-                            Text("今日无用量").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            Text(L("今日无用量")).font(.system(size: 10)).foregroundStyle(.tertiary)
                         } else {
                             Text(Fmt.tokens(stat.tokens))
                                 .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
@@ -264,7 +264,7 @@ struct PopoverView: View {
                     }
                 }
                 Text(tightest.windowDescription
-                     + (tightest.timeUntilReset.map { " · \(Fmt.duration($0))后重置" } ?? ""))
+                     + (tightest.timeUntilReset.map { " · " + L("%@后重置", Fmt.duration($0)) } ?? ""))
                     .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
 
                 ForEach(others, id: \.windowMinutes) { q in
@@ -279,7 +279,7 @@ struct PopoverView: View {
                 if let why = model.snapshot.quotaFailures[provider], why.contains("429") {
                     let retry = model.snapshot.timeUntilQuotaRetry
                         .map { " · \(Fmt.duration($0))后重试" } ?? ""
-                    Text("接口限流中 · 显示上次数据\(retry)")
+                    Text(L("接口限流中 · 显示上次数据%@", retry))
                         .font(.system(size: 9.5)).foregroundStyle(.orange.opacity(0.9))
                 }
             }
@@ -294,8 +294,8 @@ struct PopoverView: View {
             Image(systemName: q.source == .localLog ? "internaldrive" : "arrow.triangle.2.circlepath")
                 .font(.system(size: 8))
             Text(q.isStale()
-                 ? "\(q.source.label) · \(Fmt.relative(q.observedAt))数据"
-                 : (q.source == .localLog ? "本地日志 · 无需联网" : "官方接口 · 刚刚"))
+                 ? L("%@ · %@数据", q.source.label, Fmt.relative(q.observedAt))
+                 : L(q.source == .localLog ? "本地日志 · 无需联网" : "官方接口 · 刚刚"))
         }
         .font(.system(size: 9.5))
         .foregroundStyle(q.isStale() ? Color.secondary : Color.green.opacity(0.85))
@@ -311,7 +311,7 @@ struct PopoverView: View {
                 if let why = model.snapshot.quotaFailures[provider] {
                     // 429 是接口自己在限流，不是配置出错，得说清楚免得用户去乱改设置
                     let isRateLimited = why.contains("429")
-                    Text(isRateLimited ? "接口限流中" : "未连接")
+                    Text(L(isRateLimited ? "接口限流中" : "未连接"))
                         .font(.system(size: 10)).foregroundStyle(.tertiary)
                     let retry = model.snapshot.timeUntilQuotaRetry
                         .map { "\(Fmt.duration($0))后自动重试" } ?? "稍后自动重试"
@@ -337,7 +337,7 @@ struct PopoverView: View {
     /// 官方额度和自算花费混在一起会让人以为后者也是厂商给的。
     private var budgetSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            SectionLabel(text: "花费预算", trailing: "你自设 · 按等价成本")
+            SectionLabel(text: "花费预算", trailing: L("你自设 · 按等价成本"))
             ForEach(model.snapshot.budgets) { b in
                 HStack(spacing: 12) {
                     BudgetRing(percent: b.usedPercent,
@@ -345,14 +345,14 @@ struct PopoverView: View {
                                      ? b.provider.tint : model.thresholds.level(for: b.usedPercent).color)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(b.provider.displayName).font(.system(size: 11.5, weight: .medium))
-                        Text("\(Fmt.cost(b.spentUSD)) / \(Fmt.cost(b.limitUSD)) · \(b.window.label)")
+                        Text(L("%@ / %@ · %@", Fmt.cost(b.spentUSD), Fmt.cost(b.limitUSD), b.window.label))
                             .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
                         // 缺定价意味着进度被低估，不说出来等于给了个偏低的假象
                         if b.hasUnpricedUsage {
                             Text("含缺定价模型，实际花费更高")
                                 .font(.system(size: 9.5)).foregroundStyle(.orange)
                         } else {
-                            Text("剩余 \(Fmt.cost(b.remainingUSD))")
+                            Text(L("剩余 %@", Fmt.cost(b.remainingUSD)))
                                 .font(.system(size: 9.5)).foregroundStyle(.tertiary)
                         }
                     }
@@ -386,13 +386,13 @@ struct PopoverView: View {
     private var rateLimitSection: some View {
         let rl = model.snapshot.rateLimits
         return VStack(alignment: .leading, spacing: 4) {
-            SectionLabel(text: "限流", trailing: "近 7 天")
+            SectionLabel(text: "限流", trailing: L("近 7 天"))
             HStack(spacing: 7) {
                 Circle().fill(Color(red: 0.80, green: 0.28, blue: 0.25)).frame(width: 6, height: 6)
-                Text("被限流 \(rl.count) 次").font(.system(size: 11))
+                Text(L("被限流 %lld 次", rl.count)).font(.system(size: 11))
                 Spacer()
                 if let last = rl.last {
-                    Text("最近 \(Fmt.relative(last))")
+                    Text(L("最近 %@", Fmt.relative(last)))
                         .font(.system(size: 9.5)).foregroundStyle(.tertiary)
                 }
             }
@@ -409,9 +409,11 @@ struct PopoverView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 9)).foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(model.snapshot.unpricedModels.count) 个模型缺少定价")
+                Text(L("%lld 个模型缺少定价", model.snapshot.unpricedModels.count))
                     .font(.system(size: 10, weight: .medium))
-                Text("\(Fmt.tokens(model.snapshot.unpricedTokens)) token 已统计，但价格表没有单价，金额未计入：\(model.snapshot.unpricedModels.joined(separator: ", "))")
+                Text(L("%@ token 已统计，但价格表没有单价，金额未计入：%@",
+                       Fmt.tokens(model.snapshot.unpricedTokens),
+                       model.snapshot.unpricedModels.joined(separator: ", ")))
                     .font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(3)
             }
             Spacer()

@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 版本号（如 v0.5.0）
+        required: true
+
+jobs:
+  release:
+    name: 签名 · 公证 · 发布
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号
+        id: ver
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: 构建
+        run: ./scripts/build-app.sh
+
+      # 以下三步需要仓库 Secrets；没配的话跳过签名，产出未签名包。
+      # 未签名包用户首次打开需要「右键 → 打开」，README 里有说明。
+      - name: 导入签名证书
+        id: signing
+        if: env.CERT_P12 != ''
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN=$RUNNER_TEMP/build.keychain
+          security create-keychain -p "" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 签名与公证
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: ./scripts/sign-and-notarize.sh .build/manual/aibar.app
+
+      - name: 打 DMG
+        run: ./scripts/make-dmg.sh .build/manual/aibar.app "${{ steps.ver.outputs.tag }}"
+
+      - name: 发布
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: dist/*.dmg
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            ```bash
+            brew install --cask waveblog/tap/aibar
+            ```
+
+            或从下面下载 DMG。
+
+            > **aibar 默认会联网**查询 Claude 的实时剩余额度
+            > （只访问 `api.anthropic.com`，读取本机 Keychain 里的登录凭据）。
+            > 首次启动会有一页说明，两个按钮等权并列，可以直接选「切换到离线模式」。
+            > 离线模式下除 Claude 的实时额度外，功能一个不少。
+            > 随时可在菜单栏面板顶部一键切换。

@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     /// 显示「6d21h」这样的重置倒计时。
     @AppStorage(SettingsKey.menuBarShowReset) var menuBarShowReset = false
     @AppStorage(SettingsKey.budgets) var budgetsRaw = "[]"
+    @AppStorage(SettingsKey.language) var languageRaw = Localization.Language.system.rawValue
     /// 默认 false = 默认联网。改这个默认值等于改变产品承诺，动之前先看 README。
     @AppStorage(SettingsKey.offlineMode) var offlineMode = false
     @AppStorage(SettingsKey.liveQuotaClaude) var liveQuotaClaude = true
@@ -120,6 +121,27 @@ final class AppModel: ObservableObject {
     // MARK: - 网络设置
 
     /// 把界面上的开关同步给引擎。离线模式一开，L2 连凭据都不会去读。
+    var language: Localization.Language {
+        get { Localization.Language(rawValue: languageRaw) ?? .system }
+        set {
+            languageRaw = newValue.rawValue
+            applyLanguage(newValue)
+        }
+    }
+
+    /// 写 `AppleLanguages` 覆盖界面语言。
+    ///
+    /// 已经渲染出来的视图不会自动重排 —— SwiftUI 在启动时就把 bundle
+    /// 的语言定下来了，所以设置页会提示需要重启。这比假装能热切换、
+    /// 结果切一半更诚实。
+    func applyLanguage(_ language: Localization.Language) {
+        if let codes = language.appleLanguages {
+            UserDefaults.standard.set(codes, forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        }
+    }
+
     var budgets: [Budget] {
         get { BudgetStore.normalized(BudgetStore.decode(budgetsRaw)) }
         set { budgetsRaw = BudgetStore.encode(newValue) }

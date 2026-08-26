@@ -1,0 +1,218 @@
+/* aibar — English localization.
+   Keys are the original Chinese strings; a missing entry falls back to Chinese
+   rather than leaking a bare identifier into the UI. */
+
+/* ---- 通用 ---- */
+"今日" = "Today";
+"最近会话" = "Recent sessions";
+"限流" = "Rate limits";
+"订阅额度" = "Quota";
+"花费预算" = "Budget";
+"按 Provider" = "By provider";
+"近 14 天" = "Last 14 days";
+"设置" = "Settings";
+"退出" = "Quit";
+"主窗口" = "Dashboard";
+"立即刷新" = "Refresh now";
+"刷新" = "Refresh";
+"导出" = "Export";
+"分析" = "Analytics";
+"来源" = "Sources";
+"其他" = "Other";
+"关于" = "About";
+"通用" = "General";
+"网络" = "Network";
+"网络活动" = "Network activity";
+"数据源" = "Data sources";
+"预算" = "Budget";
+
+/* ---- 面板 ---- */
+"%@ tokens" = "%@ tokens";
+"%lld 个会话 · 缓存命中 %@" = "%lld sessions · %@ cache hit";
+"%@　对比昨日 %@" = "%@ vs yesterday %@";
+"今日无用量" = "No usage today";
+"你自设 · 按等价成本" = "self-set · by equivalent cost";
+"剩余 %@" = "%@ left";
+"含缺定价模型，实际花费更高" = "Includes unpriced models — actual spend is higher";
+"%@ / %@ · %@" = "%@ / %@ · %@";
+"每 7 天" = "every 7 days";
+"每 30 天" = "every 30 days";
+
+/* ---- 额度 ---- */
+"本地日志 · 无需联网" = "Local log · no network";
+"官方接口 · 刚刚" = "Official API · just now";
+"%@ · %@数据" = "%@ · from %@";
+"未连接" = "Not connected";
+"接口限流中" = "API rate limited";
+"接口限流中 · 显示上次数据%@" = "Rate limited · showing last value%@";
+"5 分钟后自动重试，不影响本地用量统计" = "Retrying automatically; local usage stats are unaffected";
+"离线模式已开启" = "Offline mode is on";
+"关闭离线即可查询实时额度" = "Turn off offline mode to query live quota";
+"不需要 —— 本地日志已含官方额度" = "Not needed — the local log already carries official quota";
+"%lld 小时窗口" = "%lld-hour window";
+"%lld 天窗口" = "%lld-day window";
+"5 小时窗口" = "5-hour window";
+"7 天窗口" = "7-day window";
+"7 天 · Opus" = "7 days · Opus";
+"7 天 · Sonnet" = "7 days · Sonnet";
+"月度" = "Monthly";
+"%@后重置" = "resets in %@";
+
+/* ---- 网络状态 ---- */
+"已连接" = "Connected";
+"已连接 · %lld 条实时额度" = "Connected · %lld live quotas";
+"离线模式 · 仅本地数据" = "Offline · local data only";
+"官方接口未连接" = "Official API not connected";
+"官方接口限流中，稍后自动重试" = "API rate limited, retrying later";
+"切到离线" = "Go offline";
+"恢复联网" = "Go online";
+"离线模式" = "Offline mode";
+
+/* ---- 空态与错误 ---- */
+"还没有用量数据" = "No usage data yet";
+"跑一次 Claude Code、Codex 或 Grok 之后会自动出现" = "It shows up after you run Claude Code, Codex or Grok";
+"读取数据失败" = "Failed to read data";
+"重建索引" = "Rebuild index";
+"正在建立索引…" = "Building index…";
+"正在重建索引…" = "Rebuilding index…";
+"首次索引本机会话日志，只跑一次" = "Indexing your local session logs — this runs once";
+"正在启动…" = "Starting…";
+"这段时间没有用量" = "No usage in this range";
+"没有匹配的会话" = "No matching sessions";
+
+/* ---- 定价提示 ---- */
+"%lld 个模型缺少定价" = "Models without pricing: %lld";
+"%@ 未计入成本：%@" = "%@ not counted toward cost: %@";
+"%@ 未计入上方成本，成本列显示为 —：%@" = "%@ excluded from the totals above (shown as —): %@";
+"估算 · 价格表 %@" = "estimated · price table %@";
+
+/* ---- 仪表盘 ---- */
+"仪表盘" = "Dashboard";
+"会话明细" = "Sessions";
+"按项目" = "By project";
+"按模型" = "By model";
+"总 Token" = "Total tokens";
+"等价 API 成本" = "Equivalent API cost";
+"缓存命中率" = "Cache hit rate";
+"输出 Token" = "Output tokens";
+"每日用量" = "Daily usage";
+"模型分布" = "Model mix";
+"Top 项目" = "Top projects";
+"按 Git 分支" = "By Git branch";
+"按%@排行" = "Top %@";
+"%lld 项" = "%lld items";
+"另有 %lld 项" = "%lld more";
+"%lld 次请求 · %lld 个会话" = "%lld requests · %lld sessions";
+"占比 %@" = "%@ of total";
+"搜索项目 / 模型 / 会话 ID" = "Search project / model / session ID";
+"全部来源" = "All sources";
+"%lld 个会话" = "Sessions: %lld";
+"该会话只有 %lld 轮，画不出曲线" = "Not enough turns for a curve (%lld)";
+"开始" = "Started";
+"项目" = "Project";
+"模型" = "Model";
+"缓存" = "Cache";
+"成本" = "Cost";
+"轮次" = "Turns";
+"时长" = "Duration";
+"输入" = "Input";
+"输出" = "Output";
+"缓存读" = "Cache read";
+"缓存写" = "Cache write";
+"推理" = "Reasoning";
+"7 天" = "7 days";
+"30 天" = "30 days";
+"90 天" = "90 days";
+"全部" = "All";
+"Token" = "Tokens";
+
+/* ---- 菜单栏设置 ---- */
+"菜单栏" = "Menu bar";
+"显示内容" = "Show";
+"显示哪一家" = "Which provider";
+"显示哪个窗口" = "Which window";
+"显示窗口名（7d）" = "Show window name (7d)";
+"显示重置倒计时（6d21h）" = "Show reset countdown (6d21h)";
+"菜单栏空间有限，两项默认都关闭，只显示一个百分比。" = "Menu bar space is tight, so both are off by default — just a percentage.";
+"预览" = "Preview";
+"额度" = "Quota";
+"今日成本" = "Today's cost";
+"今日 Token" = "Today's tokens";
+"仅图标" = "Icon only";
+"最紧张的一家" = "Whichever is tightest";
+"用量最高的窗口" = "Highest-usage window";
+"用得最多的窗口" = "Highest-usage window";
+"最短窗口" = "Shortest window";
+"最长窗口" = "Longest window";
+"额度告警" = "Quota alerts";
+"警告" = "Warning";
+"严重" = "Critical";
+"额度告警通知" = "Quota alert notifications";
+"跟随系统" = "System";
+"界面语言" = "Language";
+
+/* ---- 首启披露 ---- */
+"aibar 会做这两件事" = "aibar does two things";
+"装上就能用，但你有权先知道它在干什么。" = "It works out of the box — but you deserve to know what it does first.";
+"读取本地会话日志" = "Read local session logs";
+"查询实时剩余额度" = "Query live remaining quota";
+"这一层不可关闭 —— 它就是 aibar 本身。" = "This layer can't be turned off — it is aibar.";
+"保持开启" = "Keep it on";
+"切换到离线模式" = "Switch to offline mode";
+"随时可在菜单栏面板顶部一键切换，不会丢失任何已有数据。" = "You can flip this any time from the top of the menu bar panel. Nothing you've collected is lost.";
+"凭据读自 " = "Credentials read from ";
+"重新查看首启说明" = "Show the first-run notice again";
+"白名单" = "Allowlist";
+
+/* ---- 网络活动 ---- */
+"本次运行的全部网络请求" = "Every network request this run";
+"%lld 次 · 全部命中白名单" = "%lld requests · all within the allowlist";
+"本次运行还没有发出任何请求" = "No requests made this run";
+"离线模式已开启，没有发出任何请求" = "Offline mode is on — no requests made";
+"时间" = "Time";
+"域名 / 路径" = "Host / path";
+"状态" = "Status";
+"耗时" = "Duration";
+"实时额度查询" = "Live quota queries";
+"不适用" = "N/A";
+
+/* ---- 其他 ---- */
+"已找到" = "Found";
+"未安装" = "Not installed";
+"近 7 天" = "Last 7 days";
+"被限流 %lld 次" = "Rate limited: %lld";
+"最近 %@" = "last %@";
+"刚刚" = "just now";
+"%lld 分钟前" = "%lld min ago";
+"%lld 小时前" = "%lld h ago";
+"昨天" = "yesterday";
+"持平" = "flat";
+"(未知)" = "(unknown)";
+"(无)" = "(none)";
+"%lld 天 %lld 小时" = "%lldd %lldh";
+"%lld 天" = "%lldd";
+"%lld 小时 %lld 分" = "%lldh %lldm";
+"%lld 小时" = "%lldh";
+"%lld 分钟" = "%lldm";
+
+/* ---- 补充 ---- */
+"%@ token 已统计，但价格表没有单价，金额未计入：%@" = "%@ tokens counted, but the price table has no rate for them, so the cost is excluded: %@";
+"价格表版本 %@" = "Price table %@";
+"当前 %@ / %@" = "Current %@ / %@";
+"%@ / %@" = "%@ / %@";
+"切换后需要重启 aibar 才会生效 —— SwiftUI 在启动时就把语言定下来了。" = "Takes effect after restarting aibar — SwiftUI fixes the language at launch.";
+
+/* ---- 补充：组件与来源标签 ---- */
+"本地日志" = "Local log";
+"官方接口" = "Official API";
+"缓存命中 %@" = "%@ cache hit";
+"最近" = "Recent";
+"Provider" = "Provider";
+
+/* ---- 无障碍 ---- */
+"近 14 天用量趋势" = "Usage over the last 14 days";
+"%lld 天有用量，最高 %@ 于 %@" = "%lld days with usage; peak %@ on %@";
+"%@ 额度" = "%@ quota";
+"每日用量，按来源堆叠" = "Daily usage, stacked by source";
+"已用 %@" = "%@ used";
+"预算已用 %@" = "%@ of budget used";

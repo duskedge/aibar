@@ -13,5 +13,12 @@
     <!-- 菜单栏应用：不进 Dock、不进 Cmd-Tab -->
     <key>LSUIElement</key><true/>
     <key>NSHumanReadableCopyright</key><string>MIT License</string>
+    <!-- 开发语言是中文：中文原文即 key，缺翻译时自然回落到中文 -->
+    <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>zh-Hans</string>
+        <string>en</string>
+    </array>
 </dict>
 </plist>

@@ -2,8 +2,12 @@ import SwiftUI
 import AibarCore
 
 /// 小节标题
+///
+/// 参数刻意用 `LocalizedStringKey` 而不是 `String`：
+/// `Text(String)` **不做本地化**，只有 `Text(LocalizedStringKey)` 才会查表。
+/// 组件收 String 会让所有调用点静默失去翻译。
 struct SectionLabel: View {
-    let text: String
+    let text: LocalizedStringKey
     var trailing: String?
 
     var body: some View {
@@ -43,7 +47,7 @@ struct QuotaRing: View {
         }
         .frame(width: size, height: size)
         .accessibilityElement()
-        .accessibilityLabel("已用 \(Fmt.percent(percent))")
+        .accessibilityLabel(L("已用 %@", Fmt.percent(percent)))
     }
 }
 
@@ -70,7 +74,7 @@ struct BudgetRing: View {
         }
         .frame(width: size, height: size)
         .accessibilityElement()
-        .accessibilityLabel("预算已用 \(Fmt.percent(percent))")
+        .accessibilityLabel(L("预算已用 %@", Fmt.percent(percent)))
     }
 }
 
@@ -102,6 +106,8 @@ struct MiniBar: View {
             }
         }
         .frame(height: 3)
+        // 纯装饰：数值已经在同一行的文字里念过了，再念一遍是噪音
+        .accessibilityHidden(true)
     }
 }
 
@@ -135,12 +141,27 @@ struct DailyChart: View {
             }
         }
         .frame(height: height)
+        // 柱状图对 VoiceOver 是完全不可读的。合并成一个元素并给出摘要，
+        // 比让读屏逐个念 14 个无标签矩形有用得多。
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("近 14 天用量趋势"))
+        .accessibilityValue(chartSummary)
+    }
+
+    private var chartSummary: String {
+        let active = points.filter { $0.total > 0 }
+        guard let peak = points.max(by: { $0.total < $1.total }), peak.total > 0 else {
+            return L("这段时间没有用量")
+        }
+        return L("%lld 天有用量，最高 %@ 于 %@",
+                 active.count, Fmt.tokens(peak.total),
+                 peak.day.formatted(.dateTime.month().day()))
     }
 }
 
 /// 面板里的按钮。刻意做得比系统按钮更紧凑，352pt 宽塞不下标准控件。
 struct PanelButton: View {
-    let title: String
+    let title: LocalizedStringKey
     var systemImage: String?
     var prominent = false
     let action: () -> Void
@@ -164,5 +185,6 @@ struct PanelButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .accessibilityAddTraits(.isButton)
     }
 }

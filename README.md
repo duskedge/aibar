@@ -3,13 +3,33 @@
 > macOS 菜单栏应用，统一统计 Claude Code / Codex / Grok 的 token 用量与成本。
 > Swift 6 + SwiftUI，零第三方依赖，全部数据来自本地日志解析。
 
-**状态：M4 已完成** —— 菜单栏 + 仪表盘 + 实时额度接口 + 导出。本地化在 M5。
+[![CI](https://github.com/waveblog/aibar/actions/workflows/ci.yml/badge.svg)](https://github.com/waveblog/aibar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey)
+
+**状态：v0.5 / M5 完成** —— 菜单栏、仪表盘、实时额度、导出、中英双语。
+
+## 安装
+
+```bash
+brew install --cask waveblog/tap/aibar
+```
+
+或从 [Releases](https://github.com/waveblog/aibar/releases) 下载 DMG。
 
 ![仪表盘](docs/images/dashboard.png)
 
 ![快捷面板](docs/images/panel.png)
 
 ---
+
+## 界面
+
+中英双语，跟随系统语言，也可以在设置里强制指定。
+
+| | |
+|---|---|
+| ![面板](docs/images/panel.png) | ![Panel](docs/images/panel-en.png) |
 
 ## 现在能做什么
 
@@ -264,9 +284,20 @@ swift build && swift test
 
 ```bash
 ./scripts/build.sh         # 构建 core + CLI
-./scripts/build-app.sh     # 构建 aibar.app
+./scripts/build-app.sh     # 构建 aibar.app（含离屏截图工具）
 ./scripts/test.sh          # 跑测试（禁凭据、禁联网）
 ./scripts/check-network.sh # 域名白名单静态检查
+./scripts/make-dmg.sh      # 打 DMG 并生成填好 sha256 的 Cask
+```
+
+生成截图（必须用真实路径调用，走符号链接会让 `Bundle.main` 指错目录、
+本地化静默失效）：
+
+```bash
+APP=.build/manual/aibar.app/Contents/MacOS
+$APP/aibar-shot docs/images/panel.png
+$APP/aibar-shot docs/images/panel-en.png -AppleLanguages '(en)'
+$APP/aibar-shot --diag x   # 自检：确认 .lproj 真的被找到
 ```
 
 `build-app.sh` 顺带产出 `aibar-shot`，可以把面板离屏渲染成 PNG：
@@ -280,7 +311,7 @@ README 里这两张图就是这么出的。
 
 ## 测试
 
-63 个回归测试，六个套件。**测试进程一律不读凭据、不联网**
+80 个回归测试，八个套件。**测试进程一律不读凭据、不联网**
 （`AIBAR_NO_CREDENTIALS=1` 强制，见下文事故记录）：
 
 - **三家日志解析**（11 个）—— 解析、去重、增量续读、跨块长行、价格表边界，
@@ -298,6 +329,11 @@ README 里这两张图就是这么出的。
   紧凑格式、告警等级跟随所显示的额度。
 - **花费预算**（5 个）—— 按成本计算进度、未设上限不产生进度、
   缺定价打标、超支钳制、编解码往返。
+- **轮询频率约束**（4 个）—— force 的硬下限、退避指数增长与封顶、
+  钥匙串锁定与用户拒绝的区分。
+- **本地化**（7 个）—— 缺翻译回落到中文原文而非漏裸 key、
+  **占位符数量与类型必须和原文一致**（少一个会读到垃圾内存）、
+  译文里不许残留中文、不许有空译文。
 
 测试全部走临时目录和内存库，不碰用户的真实日志。
 
@@ -326,6 +362,19 @@ README 里这两张图就是这么出的。
    任何读取路径都直接抛错。第二道闸，防止根因以别的形式复发。
 
 顺带的代价：测试套件从 20 秒回到 13 毫秒 —— 它本来就不该联网。
+
+## 无障碍
+
+- 图表合并成单个可访问元素并给出文字摘要（「14 天有用量，最高 335M 于 8月20日」），
+  而不是让读屏逐个念 14 个无标签矩形
+- 额度环 / 预算环带 `accessibilityValue`
+- 纯装饰元素（占比轨）标 `accessibilityHidden`，避免重复念同一个数
+- 支持动态字体与减弱动效
+
+## 参与
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。新增一家 Provider 只需实现一个协议；
+数据源的实测记录在 [docs/data-sources.md](docs/data-sources.md)。
 
 ## License
 

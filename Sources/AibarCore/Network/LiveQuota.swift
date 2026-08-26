@@ -78,11 +78,11 @@ public struct ClaudeQuotaClient: LiveQuotaClient {
 
     static func label(for key: String) -> String {
         switch key {
-        case "five_hour": "5 小时窗口"
-        case "seven_day": "7 天窗口"
-        case "seven_day_opus": "7 天 · Opus"
-        case "seven_day_sonnet": "7 天 · Sonnet"
-        case "monthly": "月度"
+        case "five_hour": L("5 小时窗口")
+        case "seven_day": L("7 天窗口")
+        case "seven_day_opus": L("7 天 · Opus")
+        case "seven_day_sonnet": L("7 天 · Sonnet")
+        case "monthly": L("月度")
         default: key
         }
     }
@@ -223,8 +223,8 @@ public actor LiveQuotaService {
     public nonisolated static func availability(for provider: Provider) -> String {
         switch provider {
         case .claudeCode: "api.anthropic.com/api/oauth/usage"
-        case .codex: "不需要 —— 本地日志已含官方额度"
-        case .grok: "不需要 —— 本地日志已含官方额度"
+        case .codex: L("不需要 —— 本地日志已含官方额度")
+        case .grok: L("不需要 —— 本地日志已含官方额度")
         }
     }
 

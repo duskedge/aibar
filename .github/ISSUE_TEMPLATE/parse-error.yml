@@ -1,0 +1,37 @@
+name: 解析异常
+description: aibar 的数字不对，或某家日志解析失败
+labels: [parsing]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先跑 `aibar doctor` 和 `aibar report`，把输出贴上来。
+        **贴样本行之前请脱敏**：换掉路径、项目名、会话 ID，保留 JSON 结构与字段名。
+  - type: dropdown
+    id: provider
+    attributes:
+      label: 哪一家
+      options: [Claude Code, Codex, Grok, 不确定]
+    validations: { required: true }
+  - type: input
+    id: cli-version
+    attributes:
+      label: 该 CLI 的版本
+      placeholder: 例如 claude 2.1.233 / codex 0.128.0
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的数字 vs 实际的数字
+      description: 尽量说清楚你是怎么算出「期望值」的
+    validations: { required: true }
+  - type: textarea
+    id: sample
+    attributes:
+      label: 脱敏后的样本行
+      render: json
+  - type: textarea
+    id: doctor
+    attributes:
+      label: aibar doctor 输出
+      render: shell

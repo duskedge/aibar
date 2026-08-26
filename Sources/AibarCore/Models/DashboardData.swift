@@ -9,11 +9,11 @@ public enum DateRange: Sendable, Hashable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .today: "今日"
-        case .week: "7 天"
-        case .month: "30 天"
-        case .quarter: "90 天"
-        case .all: "全部"
+        case .today: L("今日")
+        case .week: L("7 天")
+        case .month: L("30 天")
+        case .quarter: L("90 天")
+        case .all: L("全部")
         }
     }
 

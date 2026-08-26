@@ -18,7 +18,7 @@ public struct Budget: Sendable, Hashable, Codable {
     public enum Window: String, Sendable, Codable, CaseIterable {
         case week, month
 
-        public var label: String { self == .week ? "每 7 天" : "每 30 天" }
+        public var label: String { L(self == .week ? "每 7 天" : "每 30 天") }
         public var days: Int { self == .week ? 7 : 30 }
         public var since: Date? {
             Calendar.current.date(byAdding: .day, value: -days,

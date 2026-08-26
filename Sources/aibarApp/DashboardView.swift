@@ -154,23 +154,24 @@ struct DashboardContent: View {
     private func statRow(_ d: DashboardData) -> some View {
         HStack(spacing: 12) {
             StatTile(label: "总 Token", value: Fmt.tokens(d.totals.tokens),
-                     detail: "\(d.totals.events) 次请求 · \(d.totals.sessions) 个会话",
+                     detail: L("%lld 次请求 · %lld 个会话", d.totals.events, d.totals.sessions),
                      delta: d.hasComparison
                         ? Fmt.delta(Double(d.totals.tokens), Double(d.previousTotals.tokens)) : nil)
             StatTile(label: "等价 API 成本", value: Fmt.cost(d.totals.cost),
-                     detail: "估算 · 价格表 \(PricingTable.builtin.version)",
+                     detail: L("估算 · 价格表 %@", PricingTable.builtin.version),
                      delta: d.hasComparison ? Fmt.delta(d.totals.cost, d.previousTotals.cost) : nil)
             StatTile(label: "缓存命中率",
                      value: Fmt.percent(d.totals.cacheHitRate * 100, digits: 1),
-                     detail: "\(Fmt.tokens(d.totals.cacheRead)) / \(Fmt.tokens(d.totals.input + d.totals.cacheRead + d.totals.cacheWrite))",
+                     detail: L("%@ / %@", Fmt.tokens(d.totals.cacheRead),
+                                Fmt.tokens(d.totals.input + d.totals.cacheRead + d.totals.cacheWrite)),
                      tint: .green)
             StatTile(label: "输出 Token", value: Fmt.tokens(d.totals.output),
-                     detail: "占比 \(Fmt.percent(Double(d.totals.output) / Double(max(1, d.totals.tokens)) * 100, digits: 2))")
+                     detail: L("占比 %@", Fmt.percent(Double(d.totals.output) / Double(max(1, d.totals.tokens)) * 100, digits: 2)))
         }
     }
 
     private func ranking(_ buckets: [Reports.Bucket], title: String) -> some View {
-        Card("按\(title)排行", subtitle: "\(buckets.count) 项") {
+        Card(LocalizedStringKey(L("按%@排行", title)), subtitle: L("%lld 项", buckets.count)) {
             if buckets.isEmpty {
                 emptyHint("这段时间没有用量")
             } else {
@@ -194,7 +195,7 @@ struct DashboardContent: View {
                 }
                 .frame(width: 140)
                 Spacer()
-                Text("\(model.sessions.count) 个会话")
+                Text(L("%lld 个会话", model.sessions.count))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
 
@@ -286,9 +287,10 @@ struct DashboardContent: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11)).foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(d.unpricedModels.count) 个模型缺少定价")
+                Text(L("%lld 个模型缺少定价", d.unpricedModels.count))
                     .font(.system(size: 11.5, weight: .medium))
-                Text("\(Fmt.tokens(d.unpricedTokens)) 未计入上方成本，成本列显示为 —：\(d.unpricedModels.joined(separator: ", "))")
+                Text(L("%@ 未计入上方成本，成本列显示为 —：%@", Fmt.tokens(d.unpricedTokens),
+                     d.unpricedModels.joined(separator: ", ")))
                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -314,7 +316,7 @@ struct DashboardContent: View {
 // MARK: - 通用零件
 
 struct StatTile: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
     var detail: String?
     var delta: String?
@@ -338,15 +340,16 @@ struct StatTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.35)))
+        .accessibilityElement(children: .combine)
     }
 }
 
 struct Card<Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     var subtitle: String?
     @ViewBuilder let content: Content
 
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ title: LocalizedStringKey, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title; self.subtitle = subtitle; self.content = content()
     }
 
