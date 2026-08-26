@@ -1,6 +1,10 @@
 import SwiftUI
 import AibarCore
 
+enum WindowID {
+    static let dashboard = "dashboard"
+}
+
 extension Provider {
     /// 三家的品牌色。这是分类编码，不是装饰 —— 面板、图表、会话列表必须一致，
     /// 否则用户得反复回看图例。
@@ -11,6 +15,13 @@ extension Provider {
         case .grok: Color(red: 0.38, green: 0.45, blue: 0.94)
         }
     }
+}
+
+extension Color {
+    /// 单序列排行条用的中性色。
+    /// 三家的品牌色是分类编码，不该被排行榜借走 —— 否则"蓝色"在图表里
+    /// 指 Grok，在排行里又指"随便某个项目"，读者得反复切换语境。
+    static let rankBar = Color.secondary.opacity(0.55)
 }
 
 extension Thresholds.Level {

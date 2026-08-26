@@ -50,6 +50,18 @@ public actor UsageEngine {
 
     public func snapshot() throws -> Snapshot { try reports.snapshot() }
 
+    public func dashboard(range: DateRange) throws -> DashboardData {
+        try reports.dashboard(range: range)
+    }
+
+    public func sessions(range: DateRange, provider: Provider?, search: String?) throws -> [SessionDetail] {
+        try reports.sessions(range: range, provider: provider, search: search)
+    }
+
+    public func timeline(sessionId: String, provider: Provider) throws -> [TurnPoint] {
+        try reports.timeline(sessionId: sessionId, provider: provider)
+    }
+
     public func scanSummary() throws -> Scanner.Summary { try scanner.scan() }
 
     /// 监听三家的数据目录。FSEvents 自带 latency 合并，这里不再另做去抖。

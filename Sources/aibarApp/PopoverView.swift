@@ -8,6 +8,7 @@ struct PopoverView: View {
 
     @EnvironmentObject var model: AppModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -321,6 +322,11 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
+            PanelButton(title: "主窗口", systemImage: "square.grid.2x2", prominent: true) {
+                openWindow(id: WindowID.dashboard)
+                // LSUIElement 应用默认不抢焦点，不激活的话窗口会开在后面
+                NSApp.activate(ignoringOtherApps: true)
+            }
             PanelButton(title: "设置", systemImage: "gearshape") { openSettings() }
             PanelButton(title: "退出", systemImage: "power") { NSApplication.shared.terminate(nil) }
         }

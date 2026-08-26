@@ -21,7 +21,8 @@ final class AppModel: ObservableObject {
     @AppStorage(SettingsKey.warnThreshold) var warnThreshold: Double = 80
     @AppStorage(SettingsKey.critThreshold) var critThreshold: Double = 95
 
-    private var engine: UsageEngine?
+    /// 仪表盘复用同一个引擎实例，两个窗口共享一份连接与扫描状态。
+    private(set) var engine: UsageEngine?
 
     /// 供离屏渲染用（生成 README 截图、做视觉回归）。
     /// 不启动引擎，也不监听文件，纯粹把给定快照渲染出来。

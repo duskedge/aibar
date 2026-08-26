@@ -3,7 +3,9 @@
 > macOS 菜单栏应用，统一统计 Claude Code / Codex / Grok 的 token 用量与成本。
 > Swift 6 + SwiftUI，零第三方依赖，全部数据来自本地日志解析。
 
-**状态：M2 已完成** —— 菜单栏应用可日常使用。主窗口仪表盘在 M3。
+**状态：M3 已完成** —— 菜单栏 + 主窗口仪表盘均可用。设置与额度接口层在 M4。
+
+![仪表盘](docs/images/dashboard.png)
 
 ![快捷面板](docs/images/panel.png)
 
@@ -24,6 +26,16 @@ open .build/manual/aibar.app
 
 菜单栏支持四种显示模式（额度 / 今日成本 / 今日 Token / 仅图标），
 额度过阈值时图标变琥珀、再过变红。
+
+### 主窗口仪表盘
+
+面板底部点「主窗口」，或 `open -a aibar --args --dashboard` 直接进入。
+
+- **时间范围**：今日 / 7 天 / 30 天 / 90 天 / 全部，指标可切 Token 或成本
+- **每日用量**：Swift Charts 堆叠柱，三家配色与面板一致
+- **模型分布 / Top 项目 / 按 Git 分支**：横向排行条
+- **会话明细**：可按来源筛选、按项目/模型/会话 ID 搜索；
+  选中一行展开该会话的 输入/输出/缓存读/缓存写/推理 拆分与逐轮曲线
 
 ### 命令行
 
@@ -93,7 +105,7 @@ Sources/AibarCore/
   Pricing/        PricingTable
   Scanner.swift   扫描编排
   UsageEngine.swift  actor，数据库只在这里面
-Sources/aibarApp/   SwiftUI MenuBarExtra + 快捷面板 + 设置
+Sources/aibarApp/   SwiftUI MenuBarExtra + 快捷面板 + 仪表盘 + 设置
 Sources/aibarCLI/   命令行
 Sources/aibarShot/  离屏渲染面板成 PNG（生成截图 / 视觉回归）
 ```
@@ -134,6 +146,13 @@ protocol UsageProvider: Sendable {
 
 ## 界面上的几条硬规矩
 
+- **没有可比历史就不显示环比。** 数据只回溯到某天，再往前推一个区间是空白，
+  这时算出来的百分比没有意义 —— 宁可不显示，也不给一个假的增长率。
+- **品牌色只用于分类编码。** 三家的颜色在图表、面板、会话列表里含义一致；
+  单序列排行条用中性灰，不借用品牌色，否则"蓝色"一会儿指 Grok、
+  一会儿指"随便某个项目"。
+- **单轮会话的时长写"—"而不是"0 秒"。**
+
 - **零用量不隐藏。** 当天没跑的 Provider 显示"今日无用量"，而不是把行删掉 ——
   否则用户分不清"今天没用"和"这家没接上"。
 - **额度只画真实值。** 目前只有 Codex 在本地日志里回传官方百分比；
@@ -169,20 +188,24 @@ swift build && swift test
 `build-app.sh` 顺带产出 `aibar-shot`，可以把面板离屏渲染成 PNG：
 
 ```bash
-./.build/manual/aibar-shot docs/images/panel.png
+./.build/manual/aibar-shot docs/images/panel.png   # 同时产出 dashboard.png
 ```
 
-用它生成截图，比去点真实菜单栏更可控，也不会干扰正在用的桌面。
+用它生成截图，比去点真实菜单栏更可控，也不会干扰正在用的桌面 ——
+README 里这两张图就是这么出的。
 
 ## 测试
 
-23 个回归测试，两个套件：
+32 个回归测试，三个套件：
 
 - **三家日志解析**（11 个）—— 解析、去重、增量续读、跨块长行、价格表边界，
   以及上面那两个 Codex 的坑。输入是从真实日志提取的样本行，
   上游任何一家改格式，这里先红。
 - **快照聚合与格式化**（12 个）—— 零用量 Provider 保留、会话代表模型取 token 最多者、
   按天序列补空缺、额度过期判定、成本 nil 渲染成 `—`、环比基数为零不编数字、刷新节流。
+- **仪表盘与会话明细**（9 个）—— 时间范围边界、无可比历史时不给环比、
+  会话 token 拆分与跨度、筛选与搜索、逐轮曲线排序、官方成本优先于价格表、
+  缺定价单独统计、分支归因。
 
 测试全部走临时目录和内存库，不碰用户的真实日志。
 
@@ -192,8 +215,8 @@ swift build && swift test
 |---|---|---|
 | M1 | 解析内核 + CLI | ✅ 完成 |
 | M2 | MenuBarExtra + 快捷面板 + FSEvents | ✅ 完成 |
-| M3 | 主窗口仪表盘（Swift Charts） | 下一步 |
-| M4 | 设置 · L2 额度接口 · 导出 · 本地化 | |
+| M3 | 主窗口仪表盘（Swift Charts） | ✅ 完成 |
+| M4 | L2 额度接口 · 导出 · 通知 · 本地化 | 下一步 |
 | M5 | 开源发布（CI · 签名公证 · Homebrew Cask） | |
 
 设计稿与完整需求见 [`docs/PRD.md`](docs/PRD.md)。
