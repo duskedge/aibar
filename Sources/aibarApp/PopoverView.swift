@@ -9,6 +9,7 @@ struct PopoverView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,11 +103,25 @@ struct PopoverView: View {
     @ViewBuilder
     private var content: some View {
         if scrollable {
-            ScrollView { sections }.frame(maxHeight: 460)
+            // ScrollView 在 MenuBarExtra 里**没有固有高度**，只写 maxHeight
+            // 会让它直接塌成 0 —— 面板就只剩头尾两行。
+            // 所以先量出内容高度，再据此定框，超过上限才真的滚动。
+            ScrollView {
+                sections.background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: ContentHeightKey.self, value: geo.size.height)
+                    })
+            }
+            .frame(height: min(max(contentHeight, 160), Self.maxPanelHeight))
+            .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
+            .scrollDisabled(contentHeight <= Self.maxPanelHeight)
         } else {
             sections
         }
     }
+
+    /// 面板最高多少。再高就超出多数笔记本屏幕了。
+    static let maxPanelHeight: CGFloat = 620
 
     private var sections: some View {
         VStack(spacing: 0) {
@@ -396,5 +411,14 @@ struct PopoverView: View {
             PanelButton(title: "退出", systemImage: "power") { NSApplication.shared.terminate(nil) }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+}
+
+
+/// 量内容高度用。
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
