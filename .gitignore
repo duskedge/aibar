@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
