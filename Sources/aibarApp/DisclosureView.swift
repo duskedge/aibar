@@ -25,6 +25,7 @@ struct DisclosureView: View {
             footer
         }
         .frame(width: 480, height: 560)
+        .raisesAppWindow(WindowID.disclosure)
     }
 
     private var header: some View {
@@ -59,7 +60,7 @@ struct DisclosureView: View {
     private var layerTwo: some View {
         item(tag: "L2", tint: .orange, title: "查询实时剩余额度") {
             VStack(alignment: .leading, spacing: 9) {
-                Text("本地日志答不出「现在还剩多少」。为此 aibar 会读取登录凭据，向下列域名发起**只读**查询，每 60 秒一次：")
+                Text("本地日志答不出「现在还剩多少」。为此 aibar 会读取登录凭据，向下列域名发起**只读**查询，每 5 分钟一次；撞上限流会自动拉长间隔，并继续显示上次拿到的额度：")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 

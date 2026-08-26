@@ -4,6 +4,7 @@ import AibarCore
 enum WindowID {
     static let dashboard = "dashboard"
     static let disclosure = "disclosure"
+    static let settings = "settings"
 }
 
 extension Provider {

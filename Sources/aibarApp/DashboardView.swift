@@ -24,6 +24,7 @@ struct DashboardView: View {
                 .navigationTitle(model.tab.title)
         }
         .frame(minWidth: 880, minHeight: 560)
+        .raisesAppWindow(WindowID.dashboard)
         .task { if let e = app.engine { model.attach(e) } }
         .onChange(of: model.range) { _, _ in model.reload() }
         .onChange(of: model.tab) { _, _ in model.reload() }

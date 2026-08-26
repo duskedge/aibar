@@ -16,6 +16,8 @@ public struct Snapshot: Sendable {
     /// L2 失败原因。UI 要显示"未连接 + 为什么"，不能只留个空环。
     public var quotaFailures: [Provider: String] = [:]
     public var liveFetchedAt: Date?
+    /// 额度接口 429 静默期结束时刻。
+    public var quotaBackoffUntil: Date?
     /// 用户自设预算的进度。与官方额度分开，界面上不能混为一谈。
     public var budgets: [BudgetProgress] = []
 
@@ -25,13 +27,40 @@ public struct Snapshot: Sendable {
     public var offlineMode = false
 
     /// 某一家的全部额度条目，本地与接口合并后按窗口升序。
+    ///
+    /// 同一窗口只留一条：官方接口优先，其次取更新的 observedAt。
+    /// 这样 429 时 SQLite 里上次成功的结果还能撑着环，不会和内存缓存叠出两圈。
     public func quotas(for provider: Provider) -> [QuotaStatus] {
-        (quotas + liveQuotas)
+        Self.merged(quotas + liveQuotas)
             .filter { $0.provider == provider }
             .sorted { $0.windowMinutes < $1.windowMinutes }
     }
 
-    public var allQuotas: [QuotaStatus] { quotas + liveQuotas }
+    public var allQuotas: [QuotaStatus] { Self.merged(quotas + liveQuotas) }
+
+    public var isQuotaBackingOff: Bool {
+        quotaBackoffUntil.map { Date.now < $0 } ?? false
+    }
+
+    public var timeUntilQuotaRetry: TimeInterval? {
+        guard let until = quotaBackoffUntil else { return nil }
+        let t = until.timeIntervalSinceNow
+        return t > 0 ? t : nil
+    }
+
+    static func merged(_ rows: [QuotaStatus]) -> [QuotaStatus] {
+        var byKey: [String: QuotaStatus] = [:]
+        for q in rows {
+            let key = "\(q.provider.rawValue)-\(q.windowMinutes)"
+            if let existing = byKey[key] {
+                // 同一窗口留更新的那条。来源相同或官方接口覆盖本地，都看 observedAt。
+                if q.observedAt >= existing.observedAt { byKey[key] = q }
+            } else {
+                byKey[key] = q
+            }
+        }
+        return Array(byKey.values)
+    }
 
     /// 最紧张的一条 —— 菜单栏默认用它。
     public var tightestQuota: QuotaStatus? {

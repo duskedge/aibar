@@ -43,22 +43,43 @@ public enum Credentials {
         case notFound(String)
         case unreadable(String)
         case expired(String)
+        /// 用户点了拒绝，或本会话已经弹过一次。不要接着打第二次。
+        case accessDenied
 
         public var description: String {
             switch self {
             case .notFound(let where_): "未找到登录凭据（\(where_)）"
             case .unreadable(let why): "凭据无法解析：\(why)"
             case .expired(let who): "\(who) 的登录已过期，请重新登录该 CLI"
+            case .accessDenied: "钥匙串访问被拒绝。点「始终允许」后不要立刻重编译 —— 临时签名每次都是新应用"
             }
         }
     }
 
     // MARK: - Claude Code
 
+    /// 进程内缓存。钥匙串「始终允许」是绑在二进制签名上的，
+    /// 但同一次运行里不该每 5 分钟再弹一次。
+    /// 访问一律走 `cacheLock`；Swift 6 看不到这把锁，所以标 unsafe。
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cachedToken: Token?
+    nonisolated(unsafe) private static var deniedThisSession = false
+
+    /// 测试用。生产路径不会调。
+    static func resetSessionState() {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cachedToken = nil
+        deniedThisSession = false
+    }
+
     /// Keychain service = `Claude Code-credentials`，值是一整块 JSON。
     /// 老版本 CLI 也可能放在 `~/.claude/.credentials.json`。
     public static func claudeCode() throws -> Token {
         guard !isBlocked else { throw CredentialError.notFound("AIBAR_NO_CREDENTIALS=1 已禁止读取凭据") }
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if deniedThisSession { throw CredentialError.accessDenied }
+        if let cachedToken, !cachedToken.isExpired { return cachedToken }
+
         let json = try claudeCredentialBlob()
         guard let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
               let oauth = root["claudeAiOauth"] as? [String: Any]
@@ -72,33 +93,71 @@ public enum Credentials {
         let token = Token(value: access, expiresAt: expires,
                           plan: oauth["subscriptionType"] as? String)
         if token.isExpired { throw CredentialError.expired("Claude Code") }
+        cachedToken = token
         return token
     }
 
     private static func claudeCredentialBlob() throws -> Data {
         guard !isBlocked else { throw CredentialError.notFound("AIBAR_NO_CREDENTIALS=1 已禁止读取凭据") }
-        // 先试文件（老版本），再试 Keychain
+        // 先试文件（老版本），再试 Keychain —— 文件不弹授权框
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/.credentials.json")
         if let data = try? Data(contentsOf: file), !data.isEmpty { return data }
 
+        switch readKeychain(account: false, returnData: true) {
+        case .data(let data): return data
+        case .denied:
+            deniedThisSession = true
+            throw CredentialError.accessDenied
+        case .notFound:
+            break
+        }
+
+        // 有些安装把名字写在 Account 而不是 Service。只在「找不到」时再试，
+        // 用户点了拒绝绝不能打第二次，否则就会一直弹。
+        switch readKeychain(account: true, returnData: true) {
+        case .data(let data): return data
+        case .denied:
+            deniedThisSession = true
+            throw CredentialError.accessDenied
+        case .notFound:
+            throw CredentialError.notFound("Keychain: Claude Code-credentials")
+        }
+    }
+
+    private enum KeychainRead {
+        case data(Data)
+        case notFound
+        case denied
+    }
+
+    /// 用户点拒绝 / 取消 / 认证失败，都不该再弹。
+    private static func isDenied(_ status: OSStatus) -> Bool {
+        status == errSecUserCanceled || status == errSecAuthFailed
+            || status == errSecInteractionNotAllowed
+    }
+
+    private static func readKeychain(account: Bool, returnData: Bool) -> KeychainRead {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: returnData,
+            kSecReturnAttributes as String: !returnData,
         ]
+        if account {
+            query[kSecAttrAccount as String] = "Claude Code-credentials"
+        } else {
+            query[kSecAttrService as String] = "Claude Code-credentials"
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data { return data }
-
-        // 有些安装会把账号写进 kSecAttrAccount，去掉 service 限定再试一次
-        query[kSecAttrService as String] = nil
-        query[kSecAttrAccount as String] = "Claude Code-credentials"
-        if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-           let data = item as? Data { return data }
-
-        throw CredentialError.notFound("Keychain: Claude Code-credentials")
+        if status == errSecSuccess {
+            if returnData, let data = item as? Data { return .data(data) }
+            if !returnData { return .data(Data()) }
+        }
+        if status == errSecItemNotFound { return .notFound }
+        if isDenied(status) { return .denied }
+        return .notFound
     }
 
     // MARK: - Codex
@@ -121,11 +180,26 @@ public enum Credentials {
         guard !isBlocked else { return false }
         return switch provider {
         case .claudeCode:
-            (try? claudeCredentialBlob()) != nil
+            // 只查条目在不在，不取密码 —— 否则设置页一打开就弹钥匙串
+            claudeCredentialsPresent()
         case .codex:
             FileManager.default.fileExists(atPath: codexCredentialPath.path)
         case .grok:
             FileManager.default.fileExists(atPath: grokCredentialPath.path)
+        }
+    }
+
+    private static func claudeCredentialsPresent() -> Bool {
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/.credentials.json")
+        if FileManager.default.fileExists(atPath: file.path) { return true }
+        switch readKeychain(account: false, returnData: false) {
+        case .data: return true
+        case .denied, .notFound: break
+        }
+        switch readKeychain(account: true, returnData: false) {
+        case .data: return true
+        case .denied, .notFound: return false
         }
     }
 

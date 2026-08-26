@@ -65,6 +65,13 @@ struct NetworkTests {
         #expect(short.redacted == "<3 字符>")
     }
 
+    @Test("拒绝钥匙串后给出明确原因，而不是假装没找到")
+    func accessDeniedMessage() {
+        let err = Credentials.CredentialError.accessDenied
+        #expect(err.description.contains("始终允许"))
+        Credentials.resetSessionState()
+    }
+
     @Test("过期凭据能被识别")
     func tokenExpiry() {
         let expired = Credentials.Token(value: "x", expiresAt: .now.addingTimeInterval(-60), plan: nil)
@@ -175,6 +182,80 @@ struct NetworkTests {
         #expect(!LiveQuotaService.supportsLiveQuota(.grok))
         #expect(LiveQuotaService.availability(for: .grok).contains("本地日志"))
         #expect(LiveQuotaService.availability(for: .codex).contains("本地日志"))
+    }
+
+    @Test("默认轮询间隔是 5 分钟，不是 60 秒")
+    func defaultIntervalIsFiveMinutes() {
+        #expect(LiveQuotaService.defaultMinInterval == 300)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 1) == 300)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 2) == 600)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 3) == 1200)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 4) == 1800)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 9) == 1800)
+    }
+
+    final class SequenceClient: LiveQuotaClient, @unchecked Sendable {
+        let provider = Provider.claudeCode
+        let endpointDescription = "stub"
+        private(set) var calls = 0
+        var results: [Result<[QuotaStatus], Error>] = []
+
+        func fetch() async throws -> [QuotaStatus] {
+            calls += 1
+            let idx = min(max(0, calls - 1), max(0, results.count - 1))
+            guard !results.isEmpty else { return [] }
+            return try results[idx].get()
+        }
+    }
+
+    func sampleQuota(_ percent: Double = 42) -> QuotaStatus {
+        QuotaStatus(provider: .claudeCode, usedPercent: percent, windowMinutes: 300,
+                    resetsAt: nil, planType: "pro", observedAt: .now, source: .officialAPI)
+    }
+
+    @Test("429 保留上次额度，force 也不能打断静默期")
+    func rateLimitKeepsLastQuota() async {
+        let client = SequenceClient()
+        client.results = [
+            .success([sampleQuota(42)]),
+            .failure(NetworkGuard.NetworkError.badStatus(429)),
+            .success([sampleQuota(10)]),
+        ]
+        let service = LiveQuotaService(
+            config: .init(offline: false, enabled: [.claudeCode], minInterval: 0),
+            clients: [client])
+
+        let ok = await service.refresh(force: true)
+        #expect(ok.quotas.count == 1)
+        #expect(ok.quotas[0].usedPercent == 42)
+        #expect(ok.backingOffUntil == nil)
+
+        let limited = await service.refresh(force: true)
+        #expect(limited.quotas.count == 1, "429 必须留下上次的环")
+        #expect(limited.quotas[0].usedPercent == 42)
+        #expect(limited.failures[.claudeCode]?.contains("429") == true)
+        #expect(limited.backingOffUntil != nil)
+        #expect(await service.isBackingOff())
+
+        let again = await service.refresh(force: true)
+        #expect(client.calls == 2, "静默期内连 force 也不能再打")
+        #expect(again.quotas[0].usedPercent == 42)
+    }
+
+    @Test("离线时留下上次额度，不当成失败")
+    func offlineKeepsLastQuota() async {
+        let client = SequenceClient()
+        client.results = [.success([sampleQuota(77)])]
+        let service = LiveQuotaService(
+            config: .init(offline: false, enabled: [.claudeCode], minInterval: 0),
+            clients: [client])
+        _ = await service.refresh(force: true)
+        await service.update(config: .init(offline: true, enabled: [.claudeCode], minInterval: 0))
+        let r = await service.refresh(force: true)
+        #expect(r.quotas.count == 1)
+        #expect(r.quotas[0].usedPercent == 77)
+        #expect(r.failures.isEmpty, "离线不是失败")
+        #expect(client.calls == 1, "离线后一个请求都不能发")
     }
 
     // MARK: - 导出

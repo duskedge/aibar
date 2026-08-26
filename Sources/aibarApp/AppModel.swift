@@ -39,6 +39,8 @@ final class AppModel: ObservableObject {
     @Published var wantsDisclosure = false
     /// 已经就某个窗口提醒过，避免同一个窗口反复推送。
     private var notifiedWindows: Set<String> = []
+    /// 额度接口自己的轮询。跟文件监听拆开，免得对话写日志时把接口打爆。
+    private var quotaPollTask: Task<Void, Never>?
 
     /// 仪表盘复用同一个引擎实例，两个窗口共享一份连接与扫描状态。
     private(set) var engine: UsageEngine?
@@ -75,19 +77,21 @@ final class AppModel: ObservableObject {
 
             await refresh()
             await engine.startWatching { [weak self] in
-                Task { @MainActor in await self?.refresh() }
+                // 文件变更只扫本地日志，不碰额度接口
+                Task { @MainActor in await self?.refresh(includeLiveQuota: false) }
             }
+            startQuotaPolling()
         } catch {
             phase = .failed("\(error)")
         }
     }
 
-    func refresh(force: Bool = false) async {
+    func refresh(force: Bool = false, includeLiveQuota: Bool = true) async {
         guard let engine, !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            snapshot = try await engine.refresh(force: force)
+            snapshot = try await engine.refresh(force: force, includeLiveQuota: includeLiveQuota)
             snapshot.offlineMode = offlineMode
             lastRefresh = .now
             phase = .ready
@@ -142,8 +146,21 @@ final class AppModel: ObservableObject {
         await engine.configureLiveQuota(.init(
             offline: offlineMode || !disclosureShown,
             enabled: enabled,
-            minInterval: 60))
+            minInterval: LiveQuotaService.defaultMinInterval))
         snapshot.offlineMode = offlineMode
+    }
+
+    /// 额度按自己的节奏拉，不跟 FSEvents 绑在一起。
+    private func startQuotaPolling() {
+        quotaPollTask?.cancel()
+        quotaPollTask = Task { [weak self] in
+            let interval = LiveQuotaService.defaultMinInterval
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { break }
+                await self?.refresh(includeLiveQuota: true)
+            }
+        }
     }
 
     func toggleOffline() {

@@ -39,7 +39,9 @@ public actor UsageEngine {
     /// 拉一次 L2。离线或被关掉时它自己会短路，这里不必再判断。
     @discardableResult
     public func refreshLiveQuota(force: Bool = false) async -> LiveQuotaService.Result {
-        await liveQuota.refresh(force: force)
+        let live = await liveQuota.refresh(force: force)
+        for q in live.quotas { try? store.insert(quota: q) }
+        return live
     }
 
     public var watchedPaths: [URL] { scanner.providers.flatMap(\.rootPaths) }
@@ -51,8 +53,12 @@ public actor UsageEngine {
     /// 重入与过于频繁的调用都直接返回当前快照，不排队、不堆积：
     /// 漏掉的变更下一次 FSEvents 事件会带上，用量统计不需要亚秒级实时。
     /// - Parameter force: 忽略最小间隔（手动点刷新时用）
+    /// - Parameter includeLiveQuota: 是否顺便打额度接口。文件监听触发的刷新必须关 ——
+    ///   对话时 jsonl 几秒写一次，跟着打 `oauth/usage` 会把额度接口自己打 429。
     @discardableResult
-    public func refresh(force: Bool = false) async throws -> Snapshot {
+    public func refresh(force: Bool = false, includeLiveQuota: Bool = true) async throws -> Snapshot {
+        // 额度接口跟本地扫描不是一回事：扫描被 5 秒节流时，额度仍按自己的间隔走。
+        if includeLiveQuota { _ = await refreshLiveQuota(force: force) }
         guard !scanning else { return try await snapshot() }
         if !force, Date.now.timeIntervalSince(lastRefresh) < minRefreshInterval {
             return try await snapshot()
@@ -60,7 +66,6 @@ public actor UsageEngine {
         scanning = true
         defer { scanning = false; lastRefresh = .now }
         _ = try scanner.scan()
-        await liveQuota.refresh()
         return try await snapshot()
     }
 
@@ -70,6 +75,7 @@ public actor UsageEngine {
         snap.liveQuotas = live.quotas
         snap.quotaFailures = live.failures
         snap.liveFetchedAt = live.fetchedAt
+        snap.quotaBackoffUntil = live.backingOffUntil
         return snap
     }
 

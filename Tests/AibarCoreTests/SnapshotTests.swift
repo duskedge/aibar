@@ -222,6 +222,33 @@ struct MenuBarTests {
         #expect(snapshot().quota(target: .provider(.grok), window: .tightest) == nil)
     }
 
+    @Test("同一窗口的本地缓存与接口结果合并，取更新的那条")
+    func mergePrefersNewer() {
+        var s = Snapshot()
+        let older = Date().addingTimeInterval(-3600)
+        s.quotas = [QuotaStatus(provider: .claudeCode, usedPercent: 50, windowMinutes: 300,
+                                resetsAt: nil, planType: "pro", observedAt: older, source: .officialAPI)]
+        s.liveQuotas = [QuotaStatus(provider: .claudeCode, usedPercent: 80, windowMinutes: 300,
+                                    resetsAt: nil, planType: "pro", observedAt: .now, source: .officialAPI)]
+        let rows = s.quotas(for: .claudeCode)
+        #expect(rows.count == 1)
+        #expect(rows[0].usedPercent == 80)
+    }
+
+    @Test("接口限流时仍能用本地留下的上次额度画环")
+    func localFallbackWhenRateLimited() {
+        var s = Snapshot()
+        s.quotas = [QuotaStatus(provider: .claudeCode, usedPercent: 61, windowMinutes: 300,
+                                resetsAt: .now.addingTimeInterval(3600), planType: "pro",
+                                observedAt: Date().addingTimeInterval(-120), source: .officialAPI)]
+        s.quotaFailures = [.claudeCode: "服务返回 429"]
+        s.quotaBackoffUntil = Date().addingTimeInterval(180)
+        #expect(s.quotas(for: .claudeCode).count == 1)
+        #expect(s.quotas(for: .claudeCode)[0].usedPercent == 61)
+        #expect(s.isQuotaBackingOff)
+        #expect(s.timeUntilQuotaRetry ?? 0 > 100)
+    }
+
     @Test("MenuBarTarget 能往返编码")
     func targetRoundTrip() {
         for t in MenuBarTarget.allCases {

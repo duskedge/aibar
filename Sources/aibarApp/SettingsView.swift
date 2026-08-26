@@ -14,6 +14,7 @@ struct SettingsView: View {
             about.tabItem { Label("关于", systemImage: "info.circle") }
         }
         .frame(width: 520, height: 420)
+        .raisesAppWindow(WindowID.settings)
     }
 
     private var general: some View {
@@ -164,12 +165,15 @@ struct SettingsView: View {
                 Toggle("离线模式", isOn: Binding(
                     get: { model.offlineMode },
                     set: { _ in model.toggleOffline() }))
-                Text("开启后 aibar 一个网络请求都不发，连凭据都不会读取。用量分析、成本、按项目归因全部照常 —— 只有 Claude 的实时剩余额度会变成「未连接」。")
+                Text("开启后 aibar 一个网络请求都不发，连凭据都不会读取。用量分析、成本、按项目归因全部照常 —— Claude 的实时额度停在上次成功的结果，不再更新。")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("实时额度查询") {
+            Section {
+                Text("Claude 的剩余额度每 5 分钟查一次。撞上 429 会自动拉长间隔，并继续显示上次成功的结果。Codex / Grok 的额度在本地日志里，不走网络。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 ForEach(Provider.allCases, id: \.self) { p in
                     HStack(alignment: .top) {
                         Circle().fill(p.tint).frame(width: 7, height: 7).padding(.top, 6)
@@ -192,6 +196,8 @@ struct SettingsView: View {
                         }
                     }
                 }
+            } header: {
+                Text("实时额度查询")
             }
 
             Section("白名单") {

@@ -7,7 +7,6 @@ struct PopoverView: View {
     var scrollable = true
 
     @EnvironmentObject var model: AppModel
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     @State private var contentHeight: CGFloat = 0
 
@@ -92,12 +91,18 @@ struct PopoverView: View {
 
     private var networkDotColor: Color {
         if model.offlineMode { return .secondary }
-        if !model.snapshot.quotaFailures.isEmpty { return .orange }
+        if model.snapshot.isQuotaBackingOff || !model.snapshot.quotaFailures.isEmpty { return .orange }
         return .green
     }
 
     private var networkText: String {
         if model.offlineMode { return "离线模式 · 仅本地数据" }
+        if model.snapshot.isQuotaBackingOff {
+            if let wait = model.snapshot.timeUntilQuotaRetry {
+                return "官方接口限流中，\(Fmt.duration(wait))后重试"
+            }
+            return "官方接口限流中，稍后自动重试"
+        }
         let live = model.snapshot.liveQuotas.count
         if live > 0 { return "已连接 · \(live) 条实时额度" }
         if let why = model.snapshot.quotaFailures.values.first {
@@ -271,6 +276,12 @@ struct PopoverView: View {
                 }
 
                 sourceTag(tightest)
+                if let why = model.snapshot.quotaFailures[provider], why.contains("429") {
+                    let retry = model.snapshot.timeUntilQuotaRetry
+                        .map { " · \(Fmt.duration($0))后重试" } ?? ""
+                    Text("接口限流中 · 显示上次数据\(retry)")
+                        .font(.system(size: 9.5)).foregroundStyle(.orange.opacity(0.9))
+                }
             }
             Spacer()
         }
@@ -302,7 +313,9 @@ struct PopoverView: View {
                     let isRateLimited = why.contains("429")
                     Text(isRateLimited ? "接口限流中" : "未连接")
                         .font(.system(size: 10)).foregroundStyle(.tertiary)
-                    Text(isRateLimited ? "5 分钟后自动重试，不影响本地用量统计" : why)
+                    let retry = model.snapshot.timeUntilQuotaRetry
+                        .map { "\(Fmt.duration($0))后自动重试" } ?? "稍后自动重试"
+                    Text(isRateLimited ? "\(retry)，不影响本地用量统计" : why)
                         .font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(2)
                 } else if model.offlineMode, LiveQuotaService.supportsLiveQuota(provider) {
                     Text("离线模式已开启").font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -398,8 +411,8 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(model.snapshot.unpricedModels.count) 个模型缺少定价")
                     .font(.system(size: 10, weight: .medium))
-                Text("\(Fmt.tokens(model.snapshot.unpricedTokens)) 未计入成本：\(model.snapshot.unpricedModels.joined(separator: ", "))")
-                    .font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(2)
+                Text("\(Fmt.tokens(model.snapshot.unpricedTokens)) token 已统计，但价格表没有单价，金额未计入：\(model.snapshot.unpricedModels.joined(separator: ", "))")
+                    .font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(3)
             }
             Spacer()
         }
@@ -452,11 +465,11 @@ struct PopoverView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             PanelButton(title: "主窗口", systemImage: "square.grid.2x2", prominent: true) {
-                openWindow(id: WindowID.dashboard)
-                // LSUIElement 应用默认不抢焦点，不激活的话窗口会开在后面
-                NSApp.activate(ignoringOtherApps: true)
+                WindowPresenter.open(WindowID.dashboard, using: openWindow)
             }
-            PanelButton(title: "设置", systemImage: "gearshape") { openSettings() }
+            PanelButton(title: "设置", systemImage: "gearshape") {
+                WindowPresenter.open(WindowID.settings, using: openWindow)
+            }
             PanelButton(title: "退出", systemImage: "power") { NSApplication.shared.terminate(nil) }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)

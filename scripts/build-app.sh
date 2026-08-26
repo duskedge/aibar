@@ -23,8 +23,9 @@ mkdir -p "$APP/Contents/Frameworks"
 cp "$OUT/libAibarCore.dylib" "$APP/Contents/Frameworks/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
-# 本地构建用临时签名即可；正式分发走 Developer ID + 公证（M5）
-codesign --force --sign - --timestamp=none "$APP" 2>/dev/null || true
+# 本地构建用临时签名。钥匙串「始终允许」绑的是这次二进制，
+# 所以重编译后还会再问一次；同一次运行里凭据会缓存在内存，不再反复弹。
+codesign --force --sign - --identifier dev.aibar.app --timestamp=none "$APP" 2>/dev/null || true
 
 echo "✓ $APP"
 echo "  运行: open $APP"

@@ -28,9 +28,14 @@ struct AibarApp: App {
         .defaultSize(width: 1040, height: 660)
         .commands { SidebarCommands() }
 
-        Settings {
+        // 设置必须做成独立窗口。Settings 场景 + openSettings() 在 LSUIElement
+        // 菜单栏应用里经常是空操作：窗口要么不出现，要么开在所有窗口后面。
+        Window("设置", id: WindowID.settings) {
             SettingsView().environmentObject(model)
         }
+        .defaultSize(width: 520, height: 460)
+        .defaultPosition(.center)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -53,8 +58,7 @@ struct MenuBarLabel: View {
         .onChange(of: model.wantsDisclosure) { _, wants in
             guard wants else { return }
             model.wantsDisclosure = false
-            openWindow(id: WindowID.disclosure)
-            NSApp.activate(ignoringOtherApps: true)
+            WindowPresenter.open(WindowID.disclosure, using: openWindow)
         }
         .task {
             Notifications.requestAuthorizationIfNeeded()
@@ -66,13 +70,11 @@ struct MenuBarLabel: View {
             // 就已经渲染，此时 openWindow 找不到目标 id，会静默失败。
             try? await Task.sleep(for: .milliseconds(400))
             if CommandLine.arguments.contains("--dashboard") {
-                openWindow(id: WindowID.dashboard)
-                NSApp.activate(ignoringOtherApps: true)
+                WindowPresenter.open(WindowID.dashboard, using: openWindow)
             }
             // 首启披露：还没看过就主动弹出来，而不是等用户点开面板才说
             if !model.disclosureShown {
-                openWindow(id: WindowID.disclosure)
-                NSApp.activate(ignoringOtherApps: true)
+                WindowPresenter.open(WindowID.disclosure, using: openWindow)
             }
         }
     }
