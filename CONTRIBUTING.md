@@ -10,25 +10,88 @@ aibar 有两条不能破的底线，PR 会照着它们审：
 2. **联网必须可验证。** 白名单是编译期常量，CI 强制检查。
    凭据只在内存里过一遍，不落库、不写日志、不进导出。
 
-## 本地开发
+## 开发环境
+
+正常环境：
 
 ```bash
 swift build && swift test
 ```
 
-如果 `swift build` 报 `Invalid manifest` / `Undefined symbols:
-PackageDescription.Package.__allocating_init`，说明这台机器的 Command Line
-Tools 装坏了（`usr/lib/swift/pm/ManifestAPI/` 里 dylib 与 swiftinterface 版本
-不一致）。装完整版 Xcode 或 swift.org 的 toolchain 可以根治。临时绕过：
+**如果 `swift build` 报 `Invalid manifest` / `Undefined symbols: PackageDescription.Package.__allocating_init`**，
+说明这台机器的 Command Line Tools 装坏了——`usr/lib/swift/pm/ManifestAPI/` 里
+`libPackageDescription.dylib` 与 `PackageDescription.swiftinterface` 版本不一致
+（本机实测 dylib 是 2026-06，interface 停在 2024-02），任何 tools-version 都会失败。
+
+修复：装完整版 Xcode，或从 [swift.org](https://swift.org/download/) 装官方 toolchain。
+
+临时绕过（直接调 `swiftc`，不经 SwiftPM）：
 
 ```bash
-./scripts/build.sh          # core + CLI
-./scripts/build-app.sh      # aibar.app + 截图工具
-./scripts/test.sh           # 测试（禁凭据、禁联网）
-./scripts/check-network.sh  # 域名白名单静态检查
+./scripts/build.sh         # 构建 core + CLI
+./scripts/build-app.sh     # 构建 aibar.app（含离屏截图工具）
+./scripts/test.sh          # 跑测试（禁凭据、禁联网）
+./scripts/check-network.sh # 域名白名单静态检查
+./scripts/make-dmg.sh      # 打 DMG 并生成填好 sha256 的 Cask
+./scripts/make-icon.sh     # 重新生成应用图标（图标是代码画的）
 ```
 
-提 PR 前这四条都要过。
+生成截图（必须用真实路径调用，走符号链接会让 `Bundle.main` 指错目录、
+本地化静默失效）：
+
+```bash
+APP=.build/manual/aibar.app/Contents/MacOS
+$APP/aibar-shot docs/images/panel.png --demo
+$APP/aibar-shot docs/images/panel-en.png --demo -AppleLanguages '(en)'
+$APP/aibar-shot --diag x   # 自检：确认 .lproj 真的被找到
+
+# 不加 --demo 就是读你自己的库，用来自查，别提交
+```
+
+`build-app.sh` 顺带产出 `aibar-shot`，可以把面板离屏渲染成 PNG：
+
+```bash
+./.build/manual/aibar-shot docs/images/panel.png   # 同时产出 dashboard.png
+```
+
+用它生成截图，比去点真实菜单栏更可控，也不会干扰正在用的桌面 ——
+README 里这两张图就是这么出的。
+
+提 PR 前构建、测试、白名单检查三条都要过。
+
+## 架构
+
+```
+Sources/AibarCore/
+  Models/         UsageEvent · QuotaStatus · RateLimitEvent · Snapshot
+  Ingest/         LineReader（按 offset 续读）· DateParsing · FileWatcher（FSEvents）
+  Providers/      UsageProvider 协议 + 三家 Adapter
+  Store/          Database（裸 SQLite）· UsageStore · Reports
+  Pricing/        PricingTable
+  Scanner.swift   扫描编排
+  UsageEngine.swift  actor，数据库只在这里面
+Sources/aibarApp/   SwiftUI MenuBarExtra + 快捷面板 + 仪表盘 + 设置
+Sources/aibarCLI/   命令行
+Sources/aibarShot/  离屏渲染面板成 PNG（生成截图 / 视觉回归）
+```
+
+**并发模型**：`UsageStore` 里握着 SQLite 的 `OpaquePointer`，不是 Sendable。
+把它整个关进 `UsageEngine` actor，UI 侧只拿 `Snapshot` 值类型 ——
+从根上避免跨线程共享，而不是靠 `@unchecked Sendable` 糊过去。
+
+新增一家 Provider 只需实现 `UsageProvider`：
+
+```swift
+protocol UsageProvider: Sendable {
+    var provider: Provider { get }
+    var rootPaths: [URL] { get }
+    func discoverFiles() -> [URL]
+    func parse(file: URL, from offset: UInt64, cursor: String?) throws -> ScanResult
+}
+```
+
+**零第三方依赖。** SQLite 直接用系统 `libsqlite3`。对一个后续会读取用户 OAuth 凭据的
+工具来说，没有供应链面本身就是可信度的一部分。
 
 ## 新增一家 Provider
 
@@ -50,9 +113,9 @@ protocol UsageProvider: Sendable {
 - 在 [`docs/data-sources.md`](docs/data-sources.md) 里补一节，写清楚
   路径、去重键、有没有官方额度、以及**你是怎么验证的**
 
-最后一条尤其重要。这个项目踩过一次：只翻了会话目录没找到 Grok 的额度，
-就断言「Grok 没有官方额度」，其实数据在另一个日志文件里，上游自己的界面
-一直在显示它。**「我没找到」不等于「它不存在」。**
+最后一条尤其重要。判断「某家没有官方额度」之前，先去看**该 CLI 自己的界面**
+有没有在显示这个数。如果在显示，数据一定来自某处 —— 而且未必在会话目录里，
+Grok 的就在 `~/.grok/logs/unified.jsonl`。
 
 ## 解析器的几条规矩
 
@@ -73,8 +136,8 @@ protocol UsageProvider: Sendable {
 
 ## 提交信息
 
-说清楚**为什么**，不只是改了什么。踩过的坑写进去 ——
-这个仓库的 git log 本身就是一份数据源调研记录。
+说清楚**为什么**，不只是改了什么。解析上游日志时发现的约束和反直觉之处，
+写在提交信息里比写在代码注释里更容易被后来者找到。
 
 ## 行为准则
 
