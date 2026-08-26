@@ -23,8 +23,9 @@ final class AppModel: ObservableObject {
     @AppStorage(SettingsKey.notifyOnQuota) var notifyOnQuota = true
     @AppStorage(SettingsKey.menuBarTarget) var menuBarTargetRaw = MenuBarTarget.tightest.rawValue
     @AppStorage(SettingsKey.menuBarWindow) var menuBarWindowRaw = MenuBarWindow.tightest.rawValue
-    /// 显示「7天:」这样的窗口前缀。菜单栏窄的时候可以关掉。
-    @AppStorage(SettingsKey.menuBarShowWindowName) var menuBarShowWindowName = true
+    /// 显示「7d」这样的窗口前缀。**默认关闭** —— 菜单栏默认只给一个百分比，
+    /// 那是信息密度最高的形态；想看是哪个窗口再打开。
+    @AppStorage(SettingsKey.menuBarShowWindowName) var menuBarShowWindowName = false
     /// 显示「6d21h」这样的重置倒计时。
     @AppStorage(SettingsKey.menuBarShowReset) var menuBarShowReset = false
     @AppStorage(SettingsKey.budgets) var budgetsRaw = "[]"
@@ -208,9 +209,8 @@ final class AppModel: ObservableObject {
                 // 一条额度都没有时退回今日 token，总比空着强
                 return Fmt.tokens(snapshot.today.tokens)
             }
-            var text = ""
-            if menuBarShowWindowName { text += Fmt.compactWindow(q.windowMinutes) + ": " }
-            text += Fmt.percent(q.usedPercent)
+            var text = Fmt.percent(q.usedPercent)
+            if menuBarShowWindowName { text = Fmt.compactWindow(q.windowMinutes) + " " + text }
             if menuBarShowReset, let reset = q.timeUntilReset, reset > 0 {
                 text += " " + Fmt.compactDuration(reset)
             }

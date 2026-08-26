@@ -232,8 +232,9 @@ struct MenuBarTests {
 
     @Test("菜单栏紧凑格式")
     func compactFormatting() {
-        #expect(Fmt.compactWindow(300) == "5小时")
-        #expect(Fmt.compactWindow(10080) == "7天")
+        #expect(Fmt.compactWindow(300) == "5h")
+        #expect(Fmt.compactWindow(10080) == "7d")
+        #expect(Fmt.compactWindow(43200) == "30d")
         #expect(Fmt.compactDuration(86400 * 6 + 3600 * 21) == "6d21h")
         #expect(Fmt.compactDuration(3600 * 3 + 60 * 12) == "3h12m")
         #expect(Fmt.compactDuration(45 * 60) == "45m")

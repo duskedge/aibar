@@ -25,11 +25,14 @@ public enum Fmt {
     }
 
     /// “3 天 2 小时后重置” / “12 分钟后重置”
-    /// 菜单栏用的窗口简称：`5小时` / `7天`。
+    /// 菜单栏用的窗口简称：`5h` / `7d`。
+    ///
+    /// 刻意用拉丁缩写而不是「5小时」——菜单栏是横向寸土寸金的地方，
+    /// 一个汉字的宽度约等于两个拉丁字符，「5小时」比「5h」宽三倍。
     public static func compactWindow(_ minutes: Int) -> String {
-        if minutes >= 1440 { return "\(minutes / 1440)天" }
-        if minutes >= 60 { return "\(minutes / 60)小时" }
-        return "\(minutes)分"
+        if minutes >= 1440 { return "\(minutes / 1440)d" }
+        if minutes >= 60 { return "\(minutes / 60)h" }
+        return "\(minutes)m"
     }
 
     /// 菜单栏用的倒计时：`6d21h` / `3h12m` / `45m`。

@@ -51,8 +51,10 @@ struct SettingsView: View {
                     Text("一家可能同时有多个额度窗口（如 Claude 的 5 小时与 7 天）。")
                         .font(.caption).foregroundStyle(.secondary)
 
-                    Toggle("显示窗口名（7天:）", isOn: $model.menuBarShowWindowName)
+                    Toggle("显示窗口名（7d）", isOn: $model.menuBarShowWindowName)
                     Toggle("显示重置倒计时（6d21h）", isOn: $model.menuBarShowReset)
+                    Text("菜单栏空间有限，两项默认都关闭，只显示一个百分比。")
+                        .font(.caption).foregroundStyle(.secondary)
 
                     LabeledContent("预览") {
                         HStack(spacing: 4) {
