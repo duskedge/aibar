@@ -65,9 +65,29 @@ func render() async throws {
     let out = positional.first ?? "panel.png"
     let dbPath = positional.count > 1 ? positional[1] : UsageStore.defaultPath
 
-    let store = try UsageStore(path: dbPath)
+    // README 里的截图必须用合成数据。
+    // 用维护者的真实库出图会把项目名、花费、套餐等级一起发到公开仓库 ——
+    // 那些往往是公司内部信息。合成数据还有个好处：任何贡献者都能复现同一张图。
+    let store = flags["demo"] != nil ? try demoStore() : try UsageStore(path: dbPath)
     let reports = Reports(store: store)
     var snapshot = try reports.snapshot()
+
+    if flags["demo"] != nil {
+        snapshot.liveQuotas = demoQuotas()
+        snapshot.liveFetchedAt = .now
+        let model = AppModel.preview(snapshot: snapshot)
+        _ = try writePNG(PopoverView(scrollable: false).environmentObject(model)
+            .frame(width: 352).background(Color(nsColor: .windowBackgroundColor)), to: out)
+        print("✓ \(out)")
+        let dash = DashboardModel.preview(
+            data: try reports.dashboard(range: .month),
+            sessions: try reports.sessions(range: .month, provider: nil, search: nil))
+        let dashOut = (out as NSString).deletingLastPathComponent + "/dashboard.png"
+        _ = try writePNG(DashboardPreview().environmentObject(dash)
+            .frame(width: 900).background(Color(nsColor: .windowBackgroundColor)), to: dashOut)
+        print("✓ \(dashOut)")
+        return
+    }
 
     // 除非 --offline，否则拉一次 L2，让截图反映真实状态而不是半截空环
     if flags["offline"] == nil {
@@ -105,3 +125,95 @@ func render() async throws {
 
 do { try await render() }
 catch { FileHandle.standardError.write(Data("错误: \(error)\n".utf8)); exit(1) }
+
+
+// MARK: - 演示数据
+
+/// 造一份合成用量库。数字是编的，但形状照着真实分布来 ——
+/// 缓存命中率高得离谱、输出 token 占比极低、成本集中在少数几天，
+/// 这些都是真实使用中最显眼的特征，截图要能反映出来。
+@MainActor
+func demoStore() throws -> UsageStore {
+    let store = try UsageStore(path: ":memory:")
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: .now)
+
+    struct Plan { let project: String; let branch: String?; let provider: Provider; let model: String }
+    let plans: [Plan] = [
+        .init(project: "/Users/dev/code/notes-app", branch: "main", provider: .claudeCode, model: "claude-opus-5"),
+        .init(project: "/Users/dev/code/api-gateway", branch: "main", provider: .claudeCode, model: "claude-sonnet-5"),
+        .init(project: "/Users/dev/code/web-console", branch: "feature/charts", provider: .codex, model: "gpt-5.6-sol"),
+        .init(project: "/Users/dev/code/data-pipeline", branch: "dev", provider: .codex, model: "gpt-5.5"),
+        .init(project: "/Users/dev/code/cli-tools", branch: nil, provider: .grok, model: "grok-4.6"),
+    ]
+
+    var events: [UsageEvent] = []
+    var seed: UInt64 = 20260826
+    func next(_ upper: Int) -> Int {
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return Int((seed >> 33) % UInt64(max(1, upper)))
+    }
+
+    for dayOffset in 0..<30 {
+        guard let day = cal.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
+        let busy = next(10) > 3
+        for (i, plan) in plans.enumerated() where busy || i < 2 {
+            let turns = 3 + next(12)
+            for turn in 0..<turns {
+                let ts = day.addingTimeInterval(Double(9 * 3600 + turn * 420 + next(600)))
+                // 真实分布：缓存读远大于其他，输出很小
+                let cacheRead = 40_000 + next(360_000)
+                let write = next(40_000)
+                let output = 120 + next(900)
+                events.append(UsageEvent(
+                    id: "demo-\(dayOffset)-\(i)-\(turn)",
+                    provider: plan.provider,
+                    timestamp: ts,
+                    sessionId: "demo-session-\(dayOffset)-\(i)",
+                    projectPath: plan.project,
+                    gitBranch: plan.branch,
+                    model: plan.model,
+                    inputTokens: 200 + next(3_000),
+                    outputTokens: output,
+                    cacheReadTokens: cacheRead,
+                    cacheWrite5mTokens: write,
+                    reasoningTokens: next(300),
+                    officialCostUSD: plan.provider == .grok
+                        ? Double(cacheRead + output) * 2.2e-7 : nil))
+            }
+        }
+    }
+    _ = try store.insert(events: events)
+
+    // 一条限流事件，让面板的限流区也有内容
+    try store.insert(rateLimits: [RateLimitEvent(
+        id: "demo-rl", provider: .claudeCode,
+        timestamp: today.addingTimeInterval(-2 * 86400 + 64_800),
+        sessionId: "demo-session-2-0",
+        message: "You've hit your session limit · resets 6:50pm")])
+
+    // Codex 的额度来自本地日志，所以进库
+    try store.insert(quota: QuotaStatus(
+        provider: .codex, usedPercent: 41, windowMinutes: 300,
+        resetsAt: .now.addingTimeInterval(2 * 3600 + 900), planType: "plus",
+        observedAt: .now.addingTimeInterval(-600), source: .localLog))
+    try store.insert(quota: QuotaStatus(
+        provider: .codex, usedPercent: 12, windowMinutes: 10080,
+        resetsAt: .now.addingTimeInterval(5 * 86400), planType: "plus",
+        observedAt: .now.addingTimeInterval(-600), source: .localLog))
+    try store.insert(quota: QuotaStatus(
+        provider: .grok, usedPercent: 23, windowMinutes: 10080,
+        resetsAt: .now.addingTimeInterval(6 * 86400), planType: "SuperGrok",
+        observedAt: .now.addingTimeInterval(-300), source: .localLog))
+    return store
+}
+
+/// Claude 的额度走接口，所以单独给，用来演示两种来源在界面上的区别。
+func demoQuotas() -> [QuotaStatus] {
+    [QuotaStatus(provider: .claudeCode, usedPercent: 68, windowMinutes: 300,
+                 resetsAt: .now.addingTimeInterval(3 * 3600 + 1500), planType: "pro",
+                 observedAt: .now, source: .officialAPI, windowLabel: L("5 小时窗口")),
+     QuotaStatus(provider: .claudeCode, usedPercent: 21, windowMinutes: 10080,
+                 resetsAt: .now.addingTimeInterval(5 * 86400), planType: "pro",
+                 observedAt: .now, source: .officialAPI, windowLabel: L("7 天窗口"))]
+}

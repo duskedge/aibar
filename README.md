@@ -31,6 +31,10 @@ brew install --cask waveblog/tap/aibar
 |---|---|
 | ![面板](docs/images/panel.png) | ![Panel](docs/images/panel-en.png) |
 
+> 截图用的是**合成数据**（`aibar-shot --demo`）。README 里的图不该带上
+> 维护者的真实项目名与花费 —— 那往往是公司内部信息。合成数据还有个好处：
+> 任何贡献者都能复现同一张图。
+
 ## 现在能做什么
 
 ### 菜单栏应用
@@ -288,6 +292,7 @@ swift build && swift test
 ./scripts/test.sh          # 跑测试（禁凭据、禁联网）
 ./scripts/check-network.sh # 域名白名单静态检查
 ./scripts/make-dmg.sh      # 打 DMG 并生成填好 sha256 的 Cask
+./scripts/make-icon.sh     # 重新生成应用图标（图标是代码画的）
 ```
 
 生成截图（必须用真实路径调用，走符号链接会让 `Bundle.main` 指错目录、
@@ -295,9 +300,11 @@ swift build && swift test
 
 ```bash
 APP=.build/manual/aibar.app/Contents/MacOS
-$APP/aibar-shot docs/images/panel.png
-$APP/aibar-shot docs/images/panel-en.png -AppleLanguages '(en)'
+$APP/aibar-shot docs/images/panel.png --demo
+$APP/aibar-shot docs/images/panel-en.png --demo -AppleLanguages '(en)'
 $APP/aibar-shot --diag x   # 自检：确认 .lproj 真的被找到
+
+# 不加 --demo 就是读你自己的库，用来自查，别提交
 ```
 
 `build-app.sh` 顺带产出 `aibar-shot`，可以把面板离屏渲染成 PNG：

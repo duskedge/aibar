@@ -23,6 +23,10 @@ mkdir -p "$APP/Contents/Frameworks"
 cp "$OUT/libAibarCore.dylib" "$APP/Contents/Frameworks/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# 应用图标。用代码画的，改 scripts/icon/make-icon.swift 后跑 make-icon.sh 重生成。
+[ -f Resources/AppIcon.icns ] || bash scripts/make-icon.sh >/dev/null
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
 # 本地化资源。中文是开发语言（原文即 key），所以 zh-Hans.lproj 是空的，
 # 它存在只为让 macOS 把 zh-Hans 认成受支持语言。
 for lproj in Resources/*.lproj; do
