@@ -116,7 +116,7 @@ public enum NetworkGuard {
         }
     }
 
-    public static let version = "0.3.0"
+    public static var version: String { AibarVersion.current }
 
     /// 不用 `URLSession.shared`：关掉 cookie 与凭据缓存，
     /// 避免把任何东西留在磁盘上。

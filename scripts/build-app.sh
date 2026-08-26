@@ -23,6 +23,12 @@ mkdir -p "$APP/Contents/Frameworks"
 cp "$OUT/libAibarCore.dylib" "$APP/Contents/Frameworks/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# 版本号盖章。唯一来源是 Sources/AibarCore/Version.swift，
+# Info.plist 里的占位值不作数。
+VERSION=$(bash scripts/version.sh)
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
+
 # 应用图标。用代码画的，改 scripts/icon/make-icon.swift 后跑 make-icon.sh 重生成。
 [ -f Resources/AppIcon.icns ] || bash scripts/make-icon.sh >/dev/null
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"

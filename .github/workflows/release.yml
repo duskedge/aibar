@@ -26,6 +26,18 @@ jobs:
         id: ver
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
+      # 标签和代码里的版本必须一致，否则发出去的包版本号对不上
+      - name: 校验版本号
+        run: |
+          set -euo pipefail
+          CODE=$(./scripts/version.sh)
+          TAG="${{ steps.ver.outputs.tag }}"
+          if [ "v$CODE" != "$TAG" ]; then
+            echo "::error::标签 $TAG 与代码中的版本 v$CODE 不一致。改 Sources/AibarCore/Version.swift 后重新打标签。"
+            exit 1
+          fi
+          echo "✓ $TAG"
+
       - name: 构建
         run: ./scripts/build-app.sh
 
@@ -47,10 +59,9 @@ jobs:
             -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN"
           rm -f "$RUNNER_TEMP/cert.p12"
-          echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: 签名与公证
-        if: steps.signing.outputs.signed == 'true'
+        if: env.HAS_SIGNING == 'true'
         env:
           TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
