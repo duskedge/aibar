@@ -138,6 +138,8 @@
 - 目录名是 URL 编码的 cwd（`%2FUsers%2F...`），解码后即项目路径。
 - `summary.json` 提供会话标题 / `created_at` / `agent_name`，用于会话列表展示。
 - `~/.grok/sessions/session_search.sqlite` 是全文检索库，v1 不用。
+- **额度在 `~/.grok/logs/unified.jsonl`**，不在会话目录。找 `msg == "billing: fetched credits config"`。
+  该文件混着大量其他日志，必须先按字节预筛再解析 JSON。
 - 字段命名是 camelCase，与另两家的 snake_case 不同，适配层需归一化。
 
 ### 2.4 额度：本地日志够不够？
@@ -148,7 +150,7 @@
 |---|---|---|
 | Claude Code | ❌ 无实时百分比。**但**日志里有限流事件：`error:"rate_limit"` + `apiErrorStatus:429`。可算出"本周被限流 N 次"，算不出"现在还剩多少" | ✅ `GET api.anthropic.com/api/oauth/usage`，返回 `five_hour` / `seven_day` / `seven_day_opus` 各自的 `utilization` + `resets_at`（M4 实测打通）|
 | Codex | ✅ 完整，且**同时给两个窗口**：新版 `primary`=5 小时、`secondary`=7 天；旧版只有 `primary`=7 天。**只读 primary 会让同一个数字在两种含义之间静默切换**（实测见过 7 天 64% 与 5 小时 12% 混用），两个都要读 | 不需要 |
-| Grok | ❌ 完全没有 | ❌ **也没有**。M4 逆向 Grok CLI 确认：`cli-chat-proxy.grok.com/v1` 只有 chat / models / settings，二进制里的 `rate_limit` 字符串全部来自 AWS SDK 内部限流器。此前 PRD 写的 `api.x.ai` 是认证与对话端点，不是额度端点 |
+| Grok | ✅ 有，但**不在会话目录**：`~/.grok/logs/unified.jsonl` 的 `billing: fetched credits config` → `creditUsagePercent` + `currentPeriod`（周期类型 + 结束时刻）+ `subscriptionTier`。即 `grok` 命令 `Usage limit` 面板那个数 | 不需要 |
 
 **凭据位置**（实测）：
 

@@ -29,6 +29,7 @@ public enum SettingsKey {
     public static let menuBarWindow = "menuBarWindow"
     public static let menuBarShowWindowName = "menuBarShowWindowName"
     public static let menuBarShowReset = "menuBarShowReset"
+    public static let budgets = "budgets"
 }
 
 public struct Thresholds: Sendable {

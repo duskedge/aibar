@@ -12,6 +12,7 @@ public actor UsageEngine {
     private let liveQuota: LiveQuotaService
     private var scanning = false
     private var lastRefresh = Date.distantPast
+    private var budgets: [Budget] = []
     /// 两次刷新之间的最小间隔。
     ///
     /// 用户正在跑对话时，CLI 是持续写日志的，FSEvents 会一直触发。
@@ -28,6 +29,8 @@ public actor UsageEngine {
         reports = Reports(store: store, pricing: pricing)
         liveQuota = LiveQuotaService()
     }
+
+    public func configure(budgets: [Budget]) { self.budgets = budgets }
 
     public func configureLiveQuota(_ config: LiveQuotaService.Config) async {
         await liveQuota.update(config: config)
@@ -62,7 +65,7 @@ public actor UsageEngine {
     }
 
     public func snapshot() async throws -> Snapshot {
-        var snap = try reports.snapshot()
+        var snap = try reports.snapshot(budgets: budgets)
         let live = await liveQuota.current()
         snap.liveQuotas = live.quotas
         snap.quotaFailures = live.failures

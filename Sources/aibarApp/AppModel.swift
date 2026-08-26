@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     @AppStorage(SettingsKey.menuBarShowWindowName) var menuBarShowWindowName = true
     /// 显示「6d21h」这样的重置倒计时。
     @AppStorage(SettingsKey.menuBarShowReset) var menuBarShowReset = false
+    @AppStorage(SettingsKey.budgets) var budgetsRaw = "[]"
     /// 默认 false = 默认联网。改这个默认值等于改变产品承诺，动之前先看 README。
     @AppStorage(SettingsKey.offlineMode) var offlineMode = false
     @AppStorage(SettingsKey.liveQuotaClaude) var liveQuotaClaude = true
@@ -60,6 +61,7 @@ final class AppModel: ObservableObject {
         do {
             let engine = try UsageEngine()
             self.engine = engine
+            await engine.configure(budgets: budgets)
             await applyNetworkSettings()
 
             // 冷启动先把已有数据显示出来，不让用户对着空面板等全量扫描
@@ -113,6 +115,25 @@ final class AppModel: ObservableObject {
     // MARK: - 网络设置
 
     /// 把界面上的开关同步给引擎。离线模式一开，L2 连凭据都不会去读。
+    var budgets: [Budget] {
+        get { BudgetStore.normalized(BudgetStore.decode(budgetsRaw)) }
+        set { budgetsRaw = BudgetStore.encode(newValue) }
+    }
+
+    func updateBudget(_ budget: Budget) {
+        var all = budgets
+        if let i = all.firstIndex(where: { $0.provider == budget.provider }) {
+            all[i] = budget
+        } else {
+            all.append(budget)
+        }
+        budgets = all
+        Task {
+            await engine?.configure(budgets: all)
+            await refresh(force: true)
+        }
+    }
+
     func applyNetworkSettings() async {
         guard let engine else { return }
         var enabled: Set<Provider> = []

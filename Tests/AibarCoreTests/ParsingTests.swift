@@ -182,6 +182,60 @@ struct ParsingTests {
         #expect(PricingTable.builtin.cost(of: e) == 0.017858)
     }
 
+    /// Grok 的官方周额度不在会话目录，而在 ~/.grok/logs/unified.jsonl。
+    /// 早期版本只翻了会话目录就断言"Grok 没有额度接口"——结论下早了，
+    /// grok 命令自己的 Usage limit 面板显示的就是这个数。
+    @Test("Grok 从统一日志取出官方周额度")
+    func grokWeeklyQuota() throws {
+        let lines = [
+            #"{"ts":"2026-08-26T03:19:09.810Z","src":"shell","lvl":"info","msg":"some other log"}"#,
+            """
+            {"ts":"2026-08-26T03:21:50.820Z","src":"shell","lvl":"info",\
+            "msg":"billing: fetched credits config","ctx":{"config":{\
+            "creditUsagePercent":4.0,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",\
+            "start":"2026-08-26T00:57:35.165633+00:00","end":"2026-09-02T00:57:35.165633+00:00"},\
+            "onDemandCap":{"val":0},"prepaidBalance":{"val":0}},"subscriptionTier":"SuperGrok"}}
+            """,
+        ]
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aibar-tests/\(UUID().uuidString)/logs")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("unified.jsonl")
+        try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+
+        let result = try GrokProvider().parse(file: file, from: 0, cursor: nil)
+        let q = try #require(result.quotas[10080])
+        #expect(q.usedPercent == 4.0)
+        #expect(q.planType == "SuperGrok")
+        #expect(q.source == QuotaStatus.Source.localLog)
+        #expect(q.provider == Provider.grok)
+        // 2026-09-02T00:57:35Z
+        #expect(abs((q.resetsAt?.timeIntervalSince1970 ?? 0) - 1_788_310_655) < 2)
+        #expect(result.events.isEmpty, "计费日志里没有用量事件")
+        #expect(result.malformedLines == 0, "无关日志行应被字节预筛跳过，不算解析失败")
+    }
+
+    /// 月度 / 日度周期也要认，虽然目前只见过 WEEKLY。
+    @Test("Grok 周期类型映射到窗口长度")
+    func grokPeriodTypes() throws {
+        func quota(_ type: String) throws -> QuotaStatus? {
+            let line = """
+            {"ts":"2026-08-26T03:00:00.000Z","msg":"billing: fetched credits config","ctx":{\
+            "config":{"creditUsagePercent":10,"currentPeriod":{"type":"\(type)",\
+            "end":"2026-09-02T00:00:00Z"}},"subscriptionTier":"X"}}
+            """
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("aibar-tests/\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let f = dir.appendingPathComponent("unified.jsonl")
+            try (line + "\n").write(to: f, atomically: true, encoding: .utf8)
+            return try GrokProvider().parse(file: f, from: 0, cursor: nil).quotas.values.first
+        }
+        #expect(try quota("USAGE_PERIOD_TYPE_WEEKLY")?.windowMinutes == 10080)
+        #expect(try quota("USAGE_PERIOD_TYPE_MONTHLY")?.windowMinutes == 43200)
+        #expect(try quota("USAGE_PERIOD_TYPE_DAILY")?.windowMinutes == 1440)
+    }
+
     // MARK: - 增量续读
 
     @Test("追加写入后只解析新增部分")

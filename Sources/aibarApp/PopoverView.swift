@@ -70,7 +70,7 @@ struct PopoverView: View {
     private var networkBar: some View {
         HStack(spacing: 7) {
             Circle()
-                .fill(model.offlineMode ? Color.secondary : Color.green)
+                .fill(networkDotColor)
                 .frame(width: 6, height: 6)
             Text(networkText)
                 .font(.system(size: 10.5)).foregroundStyle(.secondary)
@@ -90,11 +90,19 @@ struct PopoverView: View {
         .padding(.horizontal, 14).padding(.top, 8)
     }
 
+    private var networkDotColor: Color {
+        if model.offlineMode { return .secondary }
+        if !model.snapshot.quotaFailures.isEmpty { return .orange }
+        return .green
+    }
+
     private var networkText: String {
         if model.offlineMode { return "离线模式 · 仅本地数据" }
         let live = model.snapshot.liveQuotas.count
         if live > 0 { return "已连接 · \(live) 条实时额度" }
-        if !model.snapshot.quotaFailures.isEmpty { return "官方接口未连接" }
+        if let why = model.snapshot.quotaFailures.values.first {
+            return why.contains("429") ? "官方接口限流中，稍后自动重试" : "官方接口未连接"
+        }
         return "已连接"
     }
 
@@ -130,6 +138,10 @@ struct PopoverView: View {
             providerSection
             Divider().padding(.horizontal, 14)
             quotaSection
+            if !model.snapshot.budgets.isEmpty {
+                Divider().padding(.horizontal, 14)
+                budgetSection
+            }
             if !model.snapshot.recentSessions.isEmpty {
                 Divider().padding(.horizontal, 14)
                 sessionSection
@@ -286,8 +298,12 @@ struct PopoverView: View {
                     .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
                 // 失败时给出原因，不能只留个空环让用户猜
                 if let why = model.snapshot.quotaFailures[provider] {
-                    Text("未连接").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    Text(why).font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(2)
+                    // 429 是接口自己在限流，不是配置出错，得说清楚免得用户去乱改设置
+                    let isRateLimited = why.contains("429")
+                    Text(isRateLimited ? "接口限流中" : "未连接")
+                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text(isRateLimited ? "5 分钟后自动重试，不影响本地用量统计" : why)
+                        .font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(2)
                 } else if model.offlineMode, LiveQuotaService.supportsLiveQuota(provider) {
                     Text("离线模式已开启").font(.system(size: 10)).foregroundStyle(.tertiary)
                     Text("关闭离线即可查询实时额度")
@@ -299,6 +315,39 @@ struct PopoverView: View {
             }
             Spacer()
         }
+    }
+
+    /// 预算区。
+    ///
+    /// 和额度区刻意长得不一样：环是分段虚线、标题写「花费预算」、
+    /// 副标题注明「你自设 · 按等价 API 成本」。
+    /// 官方额度和自算花费混在一起会让人以为后者也是厂商给的。
+    private var budgetSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: "花费预算", trailing: "你自设 · 按等价成本")
+            ForEach(model.snapshot.budgets) { b in
+                HStack(spacing: 12) {
+                    BudgetRing(percent: b.usedPercent,
+                               tint: model.thresholds.level(for: b.usedPercent) == .normal
+                                     ? b.provider.tint : model.thresholds.level(for: b.usedPercent).color)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(b.provider.displayName).font(.system(size: 11.5, weight: .medium))
+                        Text("\(Fmt.cost(b.spentUSD)) / \(Fmt.cost(b.limitUSD)) · \(b.window.label)")
+                            .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
+                        // 缺定价意味着进度被低估，不说出来等于给了个偏低的假象
+                        if b.hasUnpricedUsage {
+                            Text("含缺定价模型，实际花费更高")
+                                .font(.system(size: 9.5)).foregroundStyle(.orange)
+                        } else {
+                            Text("剩余 \(Fmt.cost(b.remainingUSD))")
+                                .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
     }
 
     private var sessionSection: some View {

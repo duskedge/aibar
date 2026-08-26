@@ -15,12 +15,13 @@ struct NetworkTests {
 
     @Test("非白名单域名被拒绝且留下记录")
     func blockedHostIsRejected() async throws {
-        await NetworkGuard.RequestLog.shared.clear()
+        // 用独立日志实例：swift-testing 并行跑用例，共用全局单例会互相踩
+        let sink = NetworkGuard.RequestLog()
         let url = URL(string: "https://evil.example.com/steal")!
         await #expect(throws: NetworkGuard.NetworkError.self) {
-            _ = try await NetworkGuard.send(url: url, token: "dummy")
+            _ = try await NetworkGuard.send(url: url, token: "dummy", log: sink)
         }
-        let log = await NetworkGuard.RequestLog.shared.all()
+        let log = await sink.all()
         #expect(log.count == 1)
         #expect(log[0].host == "evil.example.com")
         #expect(log[0].note?.contains("拦截") == true)
@@ -30,11 +31,11 @@ struct NetworkTests {
     /// 日志给用户看，绝不能出现凭据。
     @Test("请求日志不含凭据")
     func logCarriesNoCredential() async throws {
-        await NetworkGuard.RequestLog.shared.clear()
+        let sink = NetworkGuard.RequestLog()
         let secret = "sk-ant-oat01-SUPERSECRET"
         _ = try? await NetworkGuard.send(
-            url: URL(string: "https://blocked.example.com/x")!, token: secret)
-        for entry in await NetworkGuard.RequestLog.shared.all() {
+            url: URL(string: "https://blocked.example.com/x")!, token: secret, log: sink)
+        for entry in await sink.all() {
             let dump = "\(entry.host)\(entry.path)\(entry.note ?? "")"
             #expect(!dump.contains(secret))
             #expect(!dump.lowercased().contains("bearer"))
@@ -43,12 +44,12 @@ struct NetworkTests {
 
     @Test("日志容量有上限，不会无限增长")
     func logIsBounded() async {
-        await NetworkGuard.RequestLog.shared.clear()
+        let sink = NetworkGuard.RequestLog()
         for i in 0..<260 {
-            await NetworkGuard.RequestLog.shared.record(
+            await sink.record(
                 .init(host: "api.anthropic.com", path: "/x/\(i)", status: 200, duration: 0.01))
         }
-        #expect(await NetworkGuard.RequestLog.shared.count() == 200)
+        #expect(await sink.count() == 200)
     }
 
     // MARK: - 凭据
@@ -165,13 +166,14 @@ struct NetworkTests {
         #expect(r.failures[.claudeCode]?.contains("重新登录") == true)
     }
 
-    @Test("各家 L2 可用性如实汇报")
+    /// 只有 Claude 需要联网。Codex 与 Grok 的官方额度本地日志里就有，
+    /// 为它们发请求纯属多余。
+    @Test("只有 Claude 需要走接口")
     func availabilityIsHonest() {
         #expect(LiveQuotaService.supportsLiveQuota(.claudeCode))
         #expect(!LiveQuotaService.supportsLiveQuota(.codex))
         #expect(!LiveQuotaService.supportsLiveQuota(.grok))
-        // Grok 经查证没有官方额度接口，不能靠成本反推假百分比
-        #expect(LiveQuotaService.availability(for: .grok).contains("未提供"))
+        #expect(LiveQuotaService.availability(for: .grok).contains("本地日志"))
         #expect(LiveQuotaService.availability(for: .codex).contains("本地日志"))
     }
 

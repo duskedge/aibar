@@ -16,6 +16,12 @@ public struct Snapshot: Sendable {
     /// L2 失败原因。UI 要显示"未连接 + 为什么"，不能只留个空环。
     public var quotaFailures: [Provider: String] = [:]
     public var liveFetchedAt: Date?
+    /// 用户自设预算的进度。与官方额度分开，界面上不能混为一谈。
+    public var budgets: [BudgetProgress] = []
+
+    public func budget(for provider: Provider) -> BudgetProgress? {
+        budgets.first { $0.provider == provider }
+    }
     public var offlineMode = false
 
     /// 某一家的全部额度条目，本地与接口合并后按窗口升序。

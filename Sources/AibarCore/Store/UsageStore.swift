@@ -17,7 +17,7 @@ public final class UsageStore {
 
     /// 库结构版本。**改了解析出来的字段就要 +1**，
     /// 否则 scan_state 会让所有文件都被跳过，新字段永远填不上。
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     private func migrate() throws {
         try db.exec("""

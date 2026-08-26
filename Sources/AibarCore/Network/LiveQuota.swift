@@ -2,10 +2,10 @@ import Foundation
 
 /// L2：向官方接口查实时剩余额度。
 ///
-/// 目前只有 Claude 有可用的端点。Codex 的额度本地日志里就有，发请求纯属多余；
-/// Grok 经查证**没有**官方额度接口（`cli-chat-proxy.grok.com/v1` 只有
-/// chat / models / settings），所以宁可显示"未提供"，也不用成本除以套餐上限
-/// 反推一个假百分比。
+/// 目前只有 Claude 需要走接口。Codex 与 Grok 的官方额度本地日志里就有：
+/// - Codex：会话 jsonl 的 `rate_limits`（primary 5 小时 + secondary 7 天）
+/// - Grok：`~/.grok/logs/unified.jsonl` 的 `billing: fetched credits config`
+///   （`creditUsagePercent` + `currentPeriod`，即 grok 命令里 Usage limit 面板那个数）
 public protocol LiveQuotaClient: Sendable {
     var provider: Provider { get }
     var endpointDescription: String { get }
@@ -110,6 +110,9 @@ public actor LiveQuotaService {
         }
     }
 
+    /// 被 429 之后静默多久。
+    public static let rateLimitBackoff: TimeInterval = 300
+
     public struct Result: Sendable {
         public var quotas: [QuotaStatus] = []
         /// provider → 失败原因。UI 要显示"未连接 + 为什么"，不能只留个空环。
@@ -121,6 +124,9 @@ public actor LiveQuotaService {
     private var config: Config
     private var lastFetch = Date.distantPast
     private var cached = Result()
+    /// 被 429 之后的静默期。额度接口自己也有限流，
+    /// 撞上之后继续按 60 秒轮询只会一直被拒。
+    private var backoffUntil = Date.distantPast
 
     public init(config: Config = Config(), clients: [any LiveQuotaClient]? = nil) {
         self.config = config
@@ -129,6 +135,8 @@ public actor LiveQuotaService {
 
     public func update(config: Config) { self.config = config }
     public func current() -> Result { cached }
+    /// 是否正处在 429 退避期。UI 要据此把文案写成"接口限流中"而不是笼统的失败。
+    public func isBackingOff() -> Bool { Date.now < backoffUntil }
 
     /// 拉取一次。离线、被关闭、或距上次太近都会直接返回缓存。
     @discardableResult
@@ -138,6 +146,7 @@ public actor LiveQuotaService {
             return cached
         }
         if !force, Date.now.timeIntervalSince(lastFetch) < config.minInterval { return cached }
+        if Date.now < backoffUntil { return cached }
         lastFetch = .now
 
         var result = Result()
@@ -147,6 +156,9 @@ public actor LiveQuotaService {
             } catch {
                 // 失败绝不影响 L1，只记录原因
                 result.failures[client.provider] = "\(error)"
+                if case NetworkGuard.NetworkError.badStatus(429) = error {
+                    backoffUntil = Date.now.addingTimeInterval(Self.rateLimitBackoff)
+                }
             }
         }
         result.fetchedAt = .now
@@ -159,7 +171,7 @@ public actor LiveQuotaService {
         switch provider {
         case .claudeCode: "api.anthropic.com/api/oauth/usage"
         case .codex: "不需要 —— 本地日志已含官方额度"
-        case .grok: "该 CLI 未提供额度接口"
+        case .grok: "不需要 —— 本地日志已含官方额度"
         }
     }
 

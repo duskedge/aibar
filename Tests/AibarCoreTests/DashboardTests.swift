@@ -156,3 +156,69 @@ struct DashboardTests {
         #expect(buckets.contains { $0.key == "(无)" }, "没有分支的也要归到一类，不能丢")
     }
 }
+
+@Suite("花费预算")
+struct BudgetTests {
+
+    func store(_ events: [UsageEvent]) throws -> UsageStore {
+        let s = try UsageStore(path: ":memory:")
+        _ = try s.insert(events: events)
+        return s
+    }
+
+    /// 预算按等价 API 成本算，和官方额度是两套口径。
+    @Test("预算进度按成本计算")
+    func budgetProgress() throws {
+        // 1M input × $15/Mtok = $15
+        let s = try store([
+            UsageEvent(id: "1", provider: .claudeCode, timestamp: .now, sessionId: "a",
+                       model: "claude-opus-5", inputTokens: 1_000_000),
+        ])
+        let progress = try Reports(store: s).budgetProgress(
+            [Budget(provider: .claudeCode, limitUSD: 100, window: .month)])
+        #expect(progress.count == 1)
+        #expect(abs(progress[0].spentUSD - 15) < 0.01)
+        #expect(abs(progress[0].usedPercent - 15) < 0.01)
+        #expect(abs(progress[0].remainingUSD - 85) < 0.01)
+        #expect(!progress[0].hasUnpricedUsage)
+    }
+
+    @Test("未设置上限的不产生进度")
+    func unconfiguredBudgetIgnored() throws {
+        let s = try store([])
+        #expect(try Reports(store: s).budgetProgress(
+            [Budget(provider: .grok, limitUSD: 0)]).isEmpty)
+    }
+
+    /// 缺定价意味着进度被低估，必须能被标出来。
+    @Test("含缺定价模型时打标")
+    func unpricedIsFlagged() throws {
+        let s = try store([
+            UsageEvent(id: "1", provider: .codex, timestamp: .now, sessionId: "a",
+                       model: "gpt-5.6", inputTokens: 1_000_000),
+            UsageEvent(id: "2", provider: .codex, timestamp: .now, sessionId: "a",
+                       model: "codex-auto-review", inputTokens: 500_000),
+        ])
+        let progress = try Reports(store: s).budgetProgress(
+            [Budget(provider: .codex, limitUSD: 50)])
+        #expect(progress[0].hasUnpricedUsage)
+    }
+
+    @Test("超支不会算出离谱的百分比")
+    func overspendIsClamped() {
+        let p = BudgetProgress(provider: .grok, spentUSD: 1_000_000, limitUSD: 1,
+                               window: .week, hasUnpricedUsage: false)
+        #expect(p.usedPercent == 999)
+        #expect(p.remainingUSD == 0)
+    }
+
+    @Test("预算编解码往返")
+    func budgetRoundTrip() {
+        let input = [Budget(provider: .grok, limitUSD: 30, window: .week)]
+        let decoded = BudgetStore.decode(BudgetStore.encode(input))
+        #expect(decoded == input)
+        // 归一化后三家都有一条
+        #expect(BudgetStore.normalized(decoded).count == 3)
+        #expect(BudgetStore.decode("坏掉的 JSON").isEmpty)
+    }
+}

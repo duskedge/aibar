@@ -170,19 +170,46 @@ protocol UsageProvider: Sendable {
 白名单当前只有一个域名：
 
 ```
-api.anthropic.com        ← Claude 的 5 小时 / 7 天 / Opus 窗口
+api.anthropic.com        ← 唯一一个。Codex 与 Grok 都不需要联网
 ```
+
+接口自己也有限流。撞上 429 后进入 5 分钟静默期，面板写明「接口限流中，
+5 分钟后自动重试」而不是笼统的「失败」—— 免得用户以为是配置错了去乱改设置。
 
 各家的实际情况（均为实测结论）：
 
-| | 实时额度来源 |
-|---|---|
-| Claude Code | `api.anthropic.com/api/oauth/usage`，凭据在 Keychain |
-| Codex | **不需要联网** —— 本地日志里就有官方 `used_percent` |
-| Grok | **没有**官方额度接口。`cli-chat-proxy.grok.com/v1` 只有 chat / models / settings，二进制里的 `rate_limit` 字符串全部来自 AWS SDK 的内部限流器 |
+| | 官方额度来源 | 需要联网 |
+|---|---|---|
+| Claude Code | `api.anthropic.com/api/oauth/usage`（5 小时 / 7 天 / Opus 三个窗口）| 是 |
+| Codex | 会话 jsonl 的 `rate_limits`：`primary` 5 小时 + `secondary` 7 天 | 否 |
+| Grok | `~/.grok/logs/unified.jsonl` 的 `billing: fetched credits config` | 否 |
 
-Grok 那一条特别说明：有工具会用「已花成本 ÷ 套餐上限」算出一个百分比显示出来。
-aibar 不这么做 —— 那是推导值，不是官方值。**拿不到就显示「该 CLI 未提供额度接口」。**
+Grok 那条值得单独说。它的官方周额度**就在本地**，只是不在会话目录里：
+
+```json
+{"msg":"billing: fetched credits config","ctx":{
+  "config":{"creditUsagePercent":4.0,
+            "currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",
+                             "end":"2026-09-02T00:57:35Z"}},
+  "subscriptionTier":"SuperGrok"}}
+```
+
+这就是 `grok` 命令里 `Usage limit` 面板显示的那个数，官方值，无需联网。
+
+**开发过程中我在这里下过一个错误结论**：只翻了 `~/.grok/sessions/` 和 Grok CLI 二进制
+的端点表，就断言「Grok 没有官方额度」，还据此写进了文档。实际是找错了地方。
+教训记在 `docs/data-sources.md` 里：**「找不到」不等于「不存在」，
+在把它写成产品结论之前，先去看上游自己的界面显示了什么。**
+
+## 花费预算
+
+和额度是两件事，面板上分开显示：
+
+- **额度**＝厂商给的官方剩余量，aibar 只做搬运，拿不到就说拿不到
+- **预算**＝你自己在设置里定的花费上限，按等价 API 成本算进度
+
+预算环用分段虚线画底，和额度环的实心底一眼可分。窗口内含缺定价模型时会标注
+「实际花费更高」—— 进度被低估这件事不能瞒着。
 
 ## 导出
 
@@ -250,7 +277,7 @@ README 里这两张图就是这么出的。
 
 ## 测试
 
-56 个回归测试，五个套件。**测试进程一律不读凭据、不联网**
+63 个回归测试，六个套件。**测试进程一律不读凭据、不联网**
 （`AIBAR_NO_CREDENTIALS=1` 强制，见下文事故记录）：
 
 - **三家日志解析**（11 个）—— 解析、去重、增量续读、跨块长行、价格表边界，
@@ -266,6 +293,8 @@ README 里这两张图就是这么出的。
   逐家开关、失败记录原因、CSV 转义、缺定价导出为空而非 0。
 - **菜单栏显示选择**（7 个）—— 目标与窗口选择、无额度源返回 nil、
   紧凑格式、告警等级跟随所显示的额度。
+- **花费预算**（5 个）—— 按成本计算进度、未设上限不产生进度、
+  缺定价打标、超支钳制、编解码往返。
 
 测试全部走临时目录和内存库，不碰用户的真实日志。
 

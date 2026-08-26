@@ -47,6 +47,33 @@ struct QuotaRing: View {
     }
 }
 
+/// 预算环。
+///
+/// 刻意用分段虚线画底，和额度环的实心底区分开 ——
+/// 一个是厂商给的额度，一个是你自己定的花费上限，不该长得一样。
+struct BudgetRing: View {
+    let percent: Double
+    let tint: Color
+    var size: CGFloat = 46
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.quaternary, style: StrokeStyle(lineWidth: 5, dash: [2, 3]))
+            Circle()
+                .trim(from: 0, to: min(1, max(0, percent / 100)))
+                .stroke(tint, style: StrokeStyle(lineWidth: 5, lineCap: .butt))
+                .rotationEffect(.degrees(-90))
+            Text(Fmt.percent(percent))
+                .font(.system(size: size * 0.26, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement()
+        .accessibilityLabel("预算已用 \(Fmt.percent(percent))")
+    }
+}
+
 /// 未连接时的空环。虚线是刻意的 —— 它读起来就不像一个“0%”。
 struct EmptyRing: View {
     var size: CGFloat = 46

@@ -54,6 +54,7 @@ public enum NetworkGuard {
     /// 进程内的请求日志。只留最近 200 条，不落盘。
     public actor RequestLog {
         public static let shared = RequestLog()
+        public init() {}
         private var entries: [LogEntry] = []
         private let capacity = 200
 
@@ -70,16 +71,19 @@ public enum NetworkGuard {
     /// 唯一的出网入口。
     ///
     /// - Parameter token: 只用于填 Authorization 头，不会被记录到任何地方。
+    /// - Parameter log: 记到哪个日志。默认全局那个；
+    ///   测试传自己的实例，免得并行用例互相踩。
     public static func send(
         url: URL,
         token: String,
         headers: [String: String] = [:],
-        timeout: TimeInterval = 10
+        timeout: TimeInterval = 10,
+        log: RequestLog = .shared
     ) async throws -> Data {
         guard let host = url.host else { throw NetworkError.blockedHost("(无 host)") }
         guard allowedHosts.contains(host) else {
             // 记下这次拦截 —— 白名单起作用了，用户应该看得到
-            await RequestLog.shared.record(LogEntry(
+            await log.record(LogEntry(
                 host: host, path: url.path, status: nil, duration: 0, note: "已拦截：不在白名单"))
             throw NetworkError.blockedHost(host)
         }
@@ -94,7 +98,7 @@ public enum NetworkGuard {
         do {
             let (data, response) = try await session.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode
-            await RequestLog.shared.record(LogEntry(
+            await log.record(LogEntry(
                 host: host, path: url.path, status: code,
                 duration: Date().timeIntervalSince(started)))
             guard let code, (200..<300).contains(code) else {
@@ -104,7 +108,7 @@ public enum NetworkGuard {
         } catch let error as NetworkError {
             throw error
         } catch {
-            await RequestLog.shared.record(LogEntry(
+            await log.record(LogEntry(
                 host: host, path: url.path, status: nil,
                 duration: Date().timeIntervalSince(started),
                 note: (error as NSError).localizedDescription))

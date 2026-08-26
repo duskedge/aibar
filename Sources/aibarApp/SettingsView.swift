@@ -7,6 +7,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             general.tabItem { Label("通用", systemImage: "gearshape") }
+            budgets.tabItem { Label("预算", systemImage: "dollarsign.circle") }
             network.tabItem { Label("网络", systemImage: "network") }
             activity.tabItem { Label("网络活动", systemImage: "list.bullet.rectangle") }
             dataSources.tabItem { Label("数据源", systemImage: "internaldrive") }
@@ -104,6 +105,53 @@ struct SettingsView: View {
         case .tokens: "今日三家 token 合计。"
         case .iconOnly: "只显示图标，适合刘海屏空间紧张时。"
         }
+    }
+
+    // MARK: - 预算
+
+    private var budgets: some View {
+        Form {
+            Section {
+                Text("额度是厂商给的官方剩余量，aibar 只做搬运。预算是**你自己**定的花费上限，按等价 API 成本计算 —— 两者是两件事，面板上也分开显示。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Provider.allCases, id: \.self) { p in
+                Section {
+                    let current = model.budgets.first { $0.provider == p } ?? Budget(provider: p)
+                    HStack {
+                        Circle().fill(p.tint).frame(width: 7, height: 7)
+                        Text(p.displayName).font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Text("$").foregroundStyle(.secondary)
+                        TextField("0 = 不启用", value: Binding(
+                            get: { current.limitUSD },
+                            set: { model.updateBudget(Budget(provider: p, limitUSD: $0,
+                                                             window: current.window)) }),
+                            format: .number)
+                            .frame(width: 80).multilineTextAlignment(.trailing)
+                        Picker("", selection: Binding(
+                            get: { current.window },
+                            set: { model.updateBudget(Budget(provider: p, limitUSD: current.limitUSD,
+                                                             window: $0)) })) {
+                            ForEach(Budget.Window.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .frame(width: 110).labelsHidden()
+                    }
+                    if let progress = model.snapshot.budget(for: p) {
+                        HStack {
+                            Text("当前 \(Fmt.cost(progress.spentUSD)) / \(Fmt.cost(progress.limitUSD))")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Text(Fmt.percent(progress.usedPercent))
+                                .font(.caption).monospacedDigit()
+                                .foregroundStyle(model.thresholds.level(for: progress.usedPercent).color)
+                        }
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 
     // MARK: - 网络

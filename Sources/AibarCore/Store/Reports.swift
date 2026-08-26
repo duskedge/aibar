@@ -132,6 +132,20 @@ public struct Reports {
         return t
     }
 
+    /// 预算进度。用等价 API 成本对着用户自设的上限算。
+    public func budgetProgress(_ budgets: [Budget]) throws -> [BudgetProgress] {
+        var out: [BudgetProgress] = []
+        for budget in budgets where budget.isConfigured {
+            let filter = Filter(since: budget.window.since, providers: [budget.provider])
+            let t = try totals(filter: filter)
+            let unpriced = try unpricedVolume(filter: filter)
+            out.append(BudgetProgress(
+                provider: budget.provider, spentUSD: t.cost, limitUSD: budget.limitUSD,
+                window: budget.window, hasUnpricedUsage: unpriced.events > 0))
+        }
+        return out
+    }
+
     /// 库里最早一条事件的时间。用来判断某个对比区间是否真的有数据覆盖。
     public func earliestEvent() throws -> Date? {
         var out: Date?
@@ -398,7 +412,7 @@ public struct Reports {
     }()
 
     /// 一次性组装面板所需的全部数据。面板打开时不做任何解析，只读这里。
-    public func snapshot() throws -> Snapshot {
+    public func snapshot(budgets: [Budget] = []) throws -> Snapshot {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: .now)
         let yesterdayStart = cal.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
@@ -422,6 +436,7 @@ public struct Reports {
         s.recentSessions = try recentSessions(limit: 5)
         s.rateLimits = try rateLimits(filter: Filter(since: cal.date(byAdding: .day, value: -7, to: .now)))
         s.dailySeries = try dailySeries(days: 14)
+        s.budgets = try budgetProgress(budgets)
         s.unpricedModels = pricing.unpricedModels(in: try models())
         if !s.unpricedModels.isEmpty {
             s.unpricedTokens = try unpricedVolume().tokens
