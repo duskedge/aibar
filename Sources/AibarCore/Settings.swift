@@ -19,6 +19,16 @@ public enum SettingsKey {
     public static let warnThreshold = "quotaWarnThreshold"
     public static let critThreshold = "quotaCritThreshold"
     public static let notifyOnQuota = "notifyOnQuota"
+    /// 全局离线：为 true 时 L2 一个请求都不会发，连凭据都不读。
+    public static let offlineMode = "offlineMode"
+    /// 逐家 L2 开关。
+    public static let liveQuotaClaude = "liveQuota.claude"
+    /// 首启披露页是否已展示过。
+    public static let disclosureShown = "disclosureShown"
+    public static let menuBarTarget = "menuBarTarget"
+    public static let menuBarWindow = "menuBarWindow"
+    public static let menuBarShowWindowName = "menuBarShowWindowName"
+    public static let menuBarShowReset = "menuBarShowReset"
 }
 
 public struct Thresholds: Sendable {
@@ -32,5 +42,51 @@ public struct Thresholds: Sendable {
 
     public func level(for percent: Double) -> Level {
         percent >= critical ? .critical : percent >= warn ? .warning : .normal
+    }
+}
+
+/// 菜单栏显示哪一家的额度。
+///
+/// 默认「最紧张的一家」—— 常驻图标应该主动告诉你哪里快撑不住了，
+/// 而不是要你自己挨个点开看。但盯着某一家干活时，固定显示那家更省心。
+public enum MenuBarTarget: RawRepresentable, CaseIterable, Sendable, Hashable {
+    case tightest
+    case provider(Provider)
+
+    public init?(rawValue: String) {
+        if rawValue == "tightest" { self = .tightest; return }
+        guard let p = Provider(rawValue: rawValue) else { return nil }
+        self = .provider(p)
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .tightest: "tightest"
+        case .provider(let p): p.rawValue
+        }
+    }
+
+    public static var allCases: [MenuBarTarget] {
+        [.tightest] + Provider.allCases.map(MenuBarTarget.provider)
+    }
+
+    public var label: String {
+        switch self {
+        case .tightest: "最紧张的一家"
+        case .provider(let p): p.displayName
+        }
+    }
+}
+
+/// 一家有多个窗口时（Claude 5 小时 + 7 天、Codex 5 小时 + 7 天），菜单栏显示哪个。
+public enum MenuBarWindow: String, CaseIterable, Sendable {
+    case tightest, shortest, longest
+
+    public var label: String {
+        switch self {
+        case .tightest: "用得最多的窗口"
+        case .shortest: "最短窗口"
+        case .longest: "最长窗口"
+        }
     }
 }

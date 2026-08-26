@@ -15,6 +15,10 @@ public final class UsageStore {
             .appendingPathComponent("Library/Application Support/aibar/aibar.db").path
     }
 
+    /// 库结构版本。**改了解析出来的字段就要 +1**，
+    /// 否则 scan_state 会让所有文件都被跳过，新字段永远填不上。
+    static let schemaVersion = 2
+
     private func migrate() throws {
         try db.exec("""
         CREATE TABLE IF NOT EXISTS usage_events (
@@ -46,12 +50,17 @@ public final class UsageStore {
             PRIMARY KEY (provider, id)
         );
 
-        CREATE TABLE IF NOT EXISTS quota_snapshots (
-            provider TEXT NOT NULL, observed_at INTEGER NOT NULL,
-            used_percent REAL NOT NULL, window_minutes INTEGER NOT NULL,
+        -- 主键必须含 window_minutes：同一家同一时刻可能有多个窗口的额度
+        -- （Codex 的 5 小时 + 7 天），少了它两条会互相覆盖。
+        CREATE TABLE IF NOT EXISTS quota_snapshots_v2 (
+            provider TEXT NOT NULL, window_minutes INTEGER NOT NULL,
+            observed_at INTEGER NOT NULL,
+            used_percent REAL NOT NULL,
             resets_at INTEGER, plan_type TEXT, source TEXT NOT NULL,
-            PRIMARY KEY (provider, observed_at)
+            window_label TEXT,
+            PRIMARY KEY (provider, window_minutes, observed_at)
         );
+        DROP TABLE IF EXISTS quota_snapshots;
 
         -- 续读状态：inode + size 用来识别文件被轮转或截断
         CREATE TABLE IF NOT EXISTS scan_state (
@@ -64,6 +73,16 @@ public final class UsageStore {
             cursor TEXT
         );
         """)
+
+        // 结构升级后必须让文件重扫一遍：offset 停在末尾的话，
+        // 新增字段（比如 quota 的第二个窗口）永远不会被填上。
+        // 事件本身有主键去重，重扫不会重复计数；2.6 GB 全量也只要 10 秒。
+        var stored = 0
+        try db.query("PRAGMA user_version") { stored = $0.int(0) }
+        if stored < Self.schemaVersion {
+            try db.exec("DELETE FROM scan_state")
+            try db.exec("PRAGMA user_version = \(Self.schemaVersion)")
+        }
     }
 
     // MARK: - 写入
@@ -141,20 +160,22 @@ public final class UsageStore {
 
     public func insert(quota: QuotaStatus) throws {
         let stmt = try db.prepare("""
-            INSERT OR REPLACE INTO quota_snapshots
-            (provider, observed_at, used_percent, window_minutes, resets_at, plan_type, source)
-            VALUES (?,?,?,?,?,?,?)
+            INSERT OR REPLACE INTO quota_snapshots_v2
+            (provider, window_minutes, observed_at, used_percent, resets_at,
+             plan_type, source, window_label)
+            VALUES (?,?,?,?,?,?,?,?)
             """)
         defer { stmt.finalize() }
-        try stmt.run([.text(quota.provider.rawValue),
+        try stmt.run([.text(quota.provider.rawValue), .int(quota.windowMinutes),
                       .int(Int(quota.observedAt.timeIntervalSince1970)),
-                      .double(quota.usedPercent), .int(quota.windowMinutes),
+                      .double(quota.usedPercent),
                       quota.resetsAt.map { .int(Int($0.timeIntervalSince1970)) } ?? .null,
                       quota.planType.map { .text($0) } ?? .null,
-                      .text(quota.source.rawValue)])
+                      .text(quota.source.rawValue),
+                      quota.windowLabel.map { .text($0) } ?? .null])
     }
 
     public func reset() throws {
-        try db.exec("DELETE FROM usage_events; DELETE FROM scan_state; DELETE FROM rate_limit_events; DELETE FROM quota_snapshots;")
+        try db.exec("DELETE FROM usage_events; DELETE FROM scan_state; DELETE FROM rate_limit_events; DELETE FROM quota_snapshots_v2;")
     }
 }

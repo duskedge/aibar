@@ -239,6 +239,80 @@ func runDoctor(_ opts: Options) throws {
     print("")
 }
 
+func runExport(_ opts: Options) throws {
+    let store = try UsageStore(path: opts.dbPath)
+    let reports = Reports(store: store)
+    var range = DateRange.all
+    if let r = opts["last"] {
+        range = switch r {
+        case "1d", "today": .today
+        case "7d": .week
+        case "30d": .month
+        case "90d": .quarter
+        default: .all
+        }
+    }
+    let sessions = try reports.sessions(range: range, provider: nil, search: nil, limit: 10_000)
+    let format = Export.Format(rawValue: opts["format"] ?? "csv") ?? .csv
+    let out = opts["out"] ?? Export.suggestedFilename(range: range, format: format)
+
+    let data = switch format {
+    case .csv: Data(Export.csv(sessions).utf8)
+    case .json: try Export.json(sessions, pricingVersion: reports.pricing.version)
+    }
+    try data.write(to: URL(fileURLWithPath: out))
+    print("✓ \(out)  \(sessions.count) 个会话  \(String(format: "%.1f KB", Double(data.count) / 1024))")
+    print("  不含凭据与对话正文，仅会话元信息与计数。")
+}
+
+/// L2 额度查询。同时充当端点自检：上游改了响应结构，这里第一时间能看出来。
+func runQuota(_ opts: Options) async throws {
+    print("\naibar quota\n\(String(repeating: "─", count: 62))")
+    print("  白名单域名  \(NetworkGuard.allowedHosts.sorted().joined(separator: ", "))")
+    print("")
+
+    for provider in Provider.allCases {
+        let supported = LiveQuotaService.supportsLiveQuota(provider)
+        let mark = supported ? "●" : "○"
+        print("  \(mark) \(pad(provider.displayName, 16))\(LiveQuotaService.availability(for: provider))")
+        print("      凭据  \(Credentials.location(for: provider))"
+              + (Credentials.exists(for: provider) ? "  [已登录]" : "  [未找到]"))
+    }
+
+    guard opts["fetch"] != nil else {
+        print("\n  只列出配置。加 --fetch 才会真的发请求。\n")
+        return
+    }
+
+    print("\n  正在查询…")
+    let service = LiveQuotaService(config: .init(offline: false, enabled: [.claudeCode]))
+    let result = await service.refresh(force: true)
+
+    if result.quotas.isEmpty && result.failures.isEmpty {
+        print("  没有启用任何 L2 客户端。")
+    }
+    for q in result.quotas {
+        var line = "  \(pad(q.provider.displayName, 14))\(pad(q.windowDescription, 16))"
+        line += pad(String(format: "%.1f%%", q.usedPercent), 8, right: true)
+        if let r = q.resetsAt { line += "  \(Fmt.duration(r.timeIntervalSinceNow))后重置" }
+        if let p = q.planType { line += "  · \(p)" }
+        print(line)
+    }
+    for (provider, why) in result.failures {
+        print("  \(pad(provider.displayName, 14))未连接：\(why)")
+    }
+
+    print("\n  网络活动")
+    for entry in await NetworkGuard.RequestLog.shared.all() {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        print("    \(f.string(from: entry.at))  \(entry.host)\(entry.path)"
+              + "  \(entry.status.map(String.init) ?? "—")"
+              + "  \(Int(entry.duration * 1000))ms"
+              + (entry.note.map { "  \($0)" } ?? ""))
+    }
+    print("")
+}
+
 func usage() {
     print("""
 
@@ -248,6 +322,9 @@ func usage() {
       aibar scan [--rebuild]              扫描本地日志并落库（增量）
       aibar report [选项]                 输出用量报告
       aibar doctor                        检查数据源与数据库状态
+      aibar quota [--fetch]               查看 L2 额度接口配置；--fetch 才真的发请求
+      aibar export [选项]                 导出会话明细
+                                          --format csv|json  --out <路径>  --last 7d
 
     report 选项:
       --last 7d | 24h | 2w                最近一段时间
@@ -268,6 +345,11 @@ do {
     case "scan": try runScan(opts)
     case "report": try runReport(opts)
     case "doctor": try runDoctor(opts)
+    // 顶层代码本身就是异步上下文，直接 await。
+    // 早期版本用 DispatchSemaphore + Task 桥接，结果 Task 继承了 MainActor，
+    // 而主线程正卡在 sem.wait() 上 —— 稳定死锁。
+    case "quota": try await runQuota(opts)
+    case "export": try runExport(opts)
     case "-h", "--help", "help": usage()
     default: fail("未知命令 '\(opts.command)'。跑 `aibar --help` 看用法。")
     }

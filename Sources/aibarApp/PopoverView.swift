@@ -14,6 +14,7 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            networkBar
 
             switch model.phase {
             case .launching, .indexing:
@@ -59,6 +60,41 @@ struct PopoverView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+    }
+
+    /// 连接状态 + 一键离线。
+    ///
+    /// 默认联网就意味着**关掉它的入口必须比打开更容易找到**，
+    /// 所以这一行常驻面板顶部，而不是埋进设置页第三个标签。
+    private var networkBar: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(model.offlineMode ? Color.secondary : Color.green)
+                .frame(width: 6, height: 6)
+            Text(networkText)
+                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+            Spacer()
+            // 用按钮而不是 Toggle：面板只有 352pt 宽，开关控件太占地方，
+            // 而且按钮能把动作写清楚（"切到离线" 比一个开关更不容易点错）。
+            Button { model.toggleOffline() } label: {
+                Text(model.offlineMode ? "恢复联网" : "切到离线")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(.quaternary.opacity(0.8)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.35)))
+        .padding(.horizontal, 14).padding(.top, 8)
+    }
+
+    private var networkText: String {
+        if model.offlineMode { return "离线模式 · 仅本地数据" }
+        let live = model.snapshot.liveQuotas.count
+        if live > 0 { return "已连接 · \(live) 条实时额度" }
+        if !model.snapshot.quotaFailures.isEmpty { return "官方接口未连接" }
+        return "已连接"
     }
 
     // MARK: - 主体
@@ -161,61 +197,90 @@ struct PopoverView: View {
     }
 
     private var quotaSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            SectionLabel(text: "订阅额度")
+        VStack(alignment: .leading, spacing: 11) {
+            SectionLabel(text: "订阅额度",
+                         trailing: model.snapshot.liveFetchedAt.map { Fmt.relative($0) })
             ForEach(Provider.allCases, id: \.self) { provider in
-                if let q = model.snapshot.quotas.first(where: { $0.provider == provider }) {
-                    quotaRow(q)
-                } else {
+                let rows = model.snapshot.quotas(for: provider)
+                if rows.isEmpty {
                     unavailableRow(provider)
+                } else {
+                    providerQuota(provider, rows)
                 }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
     }
 
-    private func quotaRow(_ q: QuotaStatus) -> some View {
-        HStack(spacing: 12) {
-            QuotaRing(percent: q.usedPercent,
-                      tint: model.thresholds.level(for: q.usedPercent) == .normal
-                            ? q.provider.tint : model.thresholds.level(for: q.usedPercent).color)
+    /// 一家可能有多个窗口（Claude 的 5 小时 + 7 天、Codex 的 5 小时 + 7 天）。
+    /// 大环画最紧张的那个，其余的用小条列在下面 —— 否则面板会被环填满。
+    private func providerQuota(_ provider: Provider, _ rows: [QuotaStatus]) -> some View {
+        let tightest = rows.max { $0.usedPercent < $1.usedPercent } ?? rows[0]
+        let others = rows.filter { $0.windowMinutes != tightest.windowMinutes }
+        let level = model.thresholds.level(for: tightest.usedPercent)
+        return HStack(alignment: .top, spacing: 12) {
+            QuotaRing(percent: tightest.usedPercent,
+                      tint: level == .normal ? provider.tint : level.color)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
-                    Text(q.provider.displayName).font(.system(size: 11.5, weight: .medium))
-                    if let plan = q.planType {
+                    Text(provider.displayName).font(.system(size: 11.5, weight: .medium))
+                    if let plan = tightest.planType {
                         Text(plan.uppercased())
                             .font(.system(size: 8, weight: .semibold))
                             .padding(.horizontal, 4).padding(.vertical, 1)
                             .background(Capsule().fill(.quaternary))
                     }
                 }
-                Text(q.windowDescription + (q.timeUntilReset.map { " · \(Fmt.duration($0))后重置" } ?? ""))
+                Text(tightest.windowDescription
+                     + (tightest.timeUntilReset.map { " · \(Fmt.duration($0))后重置" } ?? ""))
                     .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
-                // 日志型额度只在跑对话时更新，太旧必须说出来，不能装作实时
-                HStack(spacing: 3) {
-                    Image(systemName: q.source == .localLog ? "internaldrive" : "arrow.triangle.2.circlepath")
-                        .font(.system(size: 8))
-                    Text(q.isStale()
-                         ? "\(q.source.label) · \(Fmt.relative(q.observedAt))数据"
-                         : "\(q.source.label) · 无需联网")
+
+                ForEach(others, id: \.windowMinutes) { q in
+                    HStack(spacing: 5) {
+                        Text(q.windowDescription).font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                        Text(Fmt.percent(q.usedPercent))
+                            .font(.system(size: 9.5)).monospacedDigit().foregroundStyle(.secondary)
+                    }
                 }
-                .font(.system(size: 9.5))
-                .foregroundStyle(q.isStale() ? Color.secondary : Color.green.opacity(0.85))
+
+                sourceTag(tightest)
             }
             Spacer()
         }
     }
 
+    /// 数据来自哪、有多新，必须写出来。
+    /// 日志型额度只在跑对话时更新，太旧的不能装作实时。
+    private func sourceTag(_ q: QuotaStatus) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: q.source == .localLog ? "internaldrive" : "arrow.triangle.2.circlepath")
+                .font(.system(size: 8))
+            Text(q.isStale()
+                 ? "\(q.source.label) · \(Fmt.relative(q.observedAt))数据"
+                 : (q.source == .localLog ? "本地日志 · 无需联网" : "官方接口 · 刚刚"))
+        }
+        .font(.system(size: 9.5))
+        .foregroundStyle(q.isStale() ? Color.secondary : Color.green.opacity(0.85))
+    }
+
     private func unavailableRow(_ provider: Provider) -> some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             EmptyRing()
             VStack(alignment: .leading, spacing: 1) {
                 Text(provider.displayName)
                     .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
-                Text("本地日志不含额度信息")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
-                Text("需官方接口查询 · 计划于 M4")
-                    .font(.system(size: 9.5)).foregroundStyle(.quaternary)
+                // 失败时给出原因，不能只留个空环让用户猜
+                if let why = model.snapshot.quotaFailures[provider] {
+                    Text("未连接").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text(why).font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(2)
+                } else if model.offlineMode, LiveQuotaService.supportsLiveQuota(provider) {
+                    Text("离线模式已开启").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text("关闭离线即可查询实时额度")
+                        .font(.system(size: 9.5)).foregroundStyle(.quaternary)
+                } else {
+                    Text(LiveQuotaService.availability(for: provider))
+                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
             }
             Spacer()
         }

@@ -146,9 +146,9 @@
 
 | Provider | 本地日志能拿到的额度信息 | 官方接口 |
 |---|---|---|
-| Claude Code | ❌ 无实时百分比。**但**日志里有限流事件：`error:"rate_limit"` + `apiErrorStatus:429`，正文形如 `You've hit your session limit · resets 7:50pm`。可算出"本周被限流 N 次 / 上次限流时间"，算不出"现在还剩多少" | `GET https://api.anthropic.com/api/oauth/usage` |
-| Codex | ✅ 完整。`rate_limits.primary.used_percent` + `resets_at` + `plan_type`，随每轮对话写入日志 | 有，但没必要——本地已够 |
-| Grok | ❌ 完全没有 | `https://api.x.ai` + `https://auth.x.ai` OAuth |
+| Claude Code | ❌ 无实时百分比。**但**日志里有限流事件：`error:"rate_limit"` + `apiErrorStatus:429`。可算出"本周被限流 N 次"，算不出"现在还剩多少" | ✅ `GET api.anthropic.com/api/oauth/usage`，返回 `five_hour` / `seven_day` / `seven_day_opus` 各自的 `utilization` + `resets_at`（M4 实测打通）|
+| Codex | ✅ 完整，且**同时给两个窗口**：新版 `primary`=5 小时、`secondary`=7 天；旧版只有 `primary`=7 天。**只读 primary 会让同一个数字在两种含义之间静默切换**（实测见过 7 天 64% 与 5 小时 12% 混用），两个都要读 | 不需要 |
+| Grok | ❌ 完全没有 | ❌ **也没有**。M4 逆向 Grok CLI 确认：`cli-chat-proxy.grok.com/v1` 只有 chat / models / settings，二进制里的 `rate_limit` 字符串全部来自 AWS SDK 内部限流器。此前 PRD 写的 `api.x.ai` 是认证与对话端点，不是额度端点 |
 
 **凭据位置**（实测）：
 
@@ -371,7 +371,7 @@ protocol UsageProvider: Sendable {
 | ~~M1 · 内核~~ | ~~三个 Adapter + 流式解析 + SQLite + 单测~~ | ✅ 已完成 |
 | ~~M2 · 菜单栏~~ | ~~MenuBarExtra + 快捷面板 + FSEvents 增量~~ | ✅ 已完成 |
 | ~~M3 · 仪表盘~~ | ~~主窗口、Swift Charts、会话明细~~ | ✅ 已完成 |
-| M4 · 打磨 | 设置、通知、导出、本地化、无障碍 | v0.3 |
+| ~~M4 · 打磨~~ | ~~设置、通知、导出、L2 接口层~~ | ✅ 已完成（本地化与无障碍移至 M5）|
 | M5 · 开源 | README、截图、CI、公证、Homebrew Cask | v1.0 发布 |
 
 ## 7. 开源准备

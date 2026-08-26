@@ -67,7 +67,7 @@ public final class Scanner {
                     try store.db.transaction {
                         summary.eventsInserted += try store.insert(events: result.events)
                         try store.insert(rateLimits: result.rateLimits)
-                        if let q = result.quota { try store.insert(quota: q) }
+                        for q in result.quotas.values { try store.insert(quota: q) }
                         try store.saveFileState(path: file.path, provider: provider.provider,
                                                 inode: inode, size: size, mtime: mtime,
                                                 offset: result.newOffset, cursor: result.cursor)

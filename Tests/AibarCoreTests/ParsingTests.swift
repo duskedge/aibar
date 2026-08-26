@@ -113,21 +113,42 @@ struct ParsingTests {
         #expect(total == 1_240_000, "应为 1,000,000 + (300,000 - 60,000)，而不是末条的 300,000")
     }
 
-    @Test("Codex 从本地日志取出官方额度")
-    func codexQuota() throws {
+    /// Codex 同时给两个窗口：新版 primary=5 小时 / secondary=7 天，
+    /// 旧版只有 primary=7 天。只读 primary 会让同一个数字在两种含义之间
+    /// 静默切换 —— 实测见过 7 天 64% 和 5 小时 12% 混在一起。
+    @Test("Codex 的 primary 与 secondary 两个窗口都要取")
+    func codexQuotaBothWindows() throws {
         let line = """
-        {"timestamp":"2026-08-20T09:01:00.000Z","type":"event_msg","payload":{"type":"token_count",\
+        {"timestamp":"2026-08-26T09:01:00.000Z","type":"event_msg","payload":{"type":"token_count",\
         "info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"total_tokens":15}},\
-        "rate_limits":{"primary":{"used_percent":61.0,"window_minutes":10080,"resets_at":1786163142},\
+        "rate_limits":{"primary":{"used_percent":14.0,"window_minutes":300,"resets_at":1787725062},\
+        "secondary":{"used_percent":2.0,"window_minutes":10080,"resets_at":1788311862},\
         "plan_type":"plus"}}}
         """
         let result = try CodexProvider().parse(file: try write([line], to: "rollout-q.jsonl"),
                                                from: 0, cursor: nil)
-        let q = try #require(result.quota)
-        #expect(q.usedPercent == 61.0)
-        #expect(q.windowMinutes == 10080)
-        #expect(q.planType == "plus")
-        #expect(q.source == .localLog)
+        #expect(result.quotas.count == 2)
+        let five = try #require(result.quotas[300])
+        let seven = try #require(result.quotas[10080])
+        #expect(five.usedPercent == 14.0)
+        #expect(seven.usedPercent == 2.0)
+        #expect(five.planType == "plus")
+        #expect(five.source == QuotaStatus.Source.localLog)
+    }
+
+    /// 旧版 Codex 只有 primary，且它是 7 天窗口。
+    @Test("旧版单窗口格式仍然能解析")
+    func codexQuotaLegacySingleWindow() throws {
+        let line = """
+        {"timestamp":"2026-07-20T09:01:00.000Z","type":"event_msg","payload":{"type":"token_count",\
+        "info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"total_tokens":15}},\
+        "rate_limits":{"primary":{"used_percent":61.0,"window_minutes":10080,"resets_at":1786163142},\
+        "secondary":null,"plan_type":"plus"}}}
+        """
+        let result = try CodexProvider().parse(file: try write([line], to: "rollout-legacy.jsonl"),
+                                               from: 0, cursor: nil)
+        #expect(result.quotas.count == 1)
+        #expect(result.quotas[10080]?.usedPercent == 61.0)
     }
 
     // MARK: - Grok

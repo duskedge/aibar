@@ -7,41 +7,94 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             general.tabItem { Label("通用", systemImage: "gearshape") }
+            network.tabItem { Label("网络", systemImage: "network") }
+            activity.tabItem { Label("网络活动", systemImage: "list.bullet.rectangle") }
             dataSources.tabItem { Label("数据源", systemImage: "internaldrive") }
             about.tabItem { Label("关于", systemImage: "info.circle") }
         }
-        .frame(width: 440, height: 320)
+        .frame(width: 520, height: 420)
     }
 
     private var general: some View {
         Form {
-            Picker("菜单栏显示", selection: $model.display) {
-                ForEach(MenuBarDisplay.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            Text(displayHint)
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Section("菜单栏") {
+                Picker("显示内容", selection: $model.display) {
+                    ForEach(MenuBarDisplay.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Text(displayHint)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Divider().padding(.vertical, 4)
-
-            LabeledContent("额度告警") {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("警告").font(.caption).frame(width: 32, alignment: .leading)
-                        Slider(value: $model.warnThreshold, in: 50...95, step: 5)
-                        Text(Fmt.percent(model.warnThreshold)).font(.caption)
-                            .monospacedDigit().frame(width: 36, alignment: .trailing)
+                if model.display == .quota {
+                    Picker("显示哪一家", selection: Binding(
+                        get: { model.menuBarTarget },
+                        set: { model.menuBarTarget = $0 })) {
+                        ForEach(MenuBarTarget.allCases, id: \.self) { target in
+                            HStack {
+                                if case .provider(let p) = target {
+                                    Circle().fill(p.tint).frame(width: 6, height: 6)
+                                }
+                                Text(target.label)
+                            }.tag(target)
+                        }
                     }
-                    HStack {
-                        Text("严重").font(.caption).frame(width: 32, alignment: .leading)
-                        Slider(value: $model.critThreshold, in: 60...99, step: 1)
-                        Text(Fmt.percent(model.critThreshold)).font(.caption)
-                            .monospacedDigit().frame(width: 36, alignment: .trailing)
+                    Text(targetHint)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Picker("显示哪个窗口", selection: Binding(
+                        get: { model.menuBarWindow },
+                        set: { model.menuBarWindow = $0 })) {
+                        ForEach(MenuBarWindow.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    Text("一家可能同时有多个额度窗口（如 Claude 的 5 小时与 7 天）。")
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    Toggle("显示窗口名（7天:）", isOn: $model.menuBarShowWindowName)
+                    Toggle("显示重置倒计时（6d21h）", isOn: $model.menuBarShowReset)
+
+                    LabeledContent("预览") {
+                        HStack(spacing: 4) {
+                            Image(systemName: "gauge.with.needle").font(.system(size: 11))
+                            Text(model.menuBarTitle ?? "").monospacedDigit()
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary))
                     }
                 }
             }
+
+            Section("额度告警") {
+                HStack {
+                    Text("警告").font(.caption).frame(width: 32, alignment: .leading)
+                    Slider(value: $model.warnThreshold, in: 50...95, step: 5)
+                    Text(Fmt.percent(model.warnThreshold)).font(.caption)
+                        .monospacedDigit().frame(width: 36, alignment: .trailing)
+                }
+                HStack {
+                    Text("严重").font(.caption).frame(width: 32, alignment: .leading)
+                    Slider(value: $model.critThreshold, in: 60...99, step: 1)
+                    Text(Fmt.percent(model.critThreshold)).font(.caption)
+                        .monospacedDigit().frame(width: 36, alignment: .trailing)
+                }
+                Text("图标在警告线转琥珀、严重线转红。判断依据是**菜单栏当前显示的那条**额度 —— 显示 A 却按 B 的水位报警会让人误判。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private var targetHint: String {
+        switch model.menuBarTarget {
+        case .tightest:
+            "自动显示三家里用量最高的一条 —— 常驻图标该主动告诉你哪里快撑不住了。"
+        case .provider(let p):
+            LiveQuotaService.supportsLiveQuota(p) || p == .codex
+                ? "固定显示 \(p.displayName) 的额度。"
+                : "\(p.displayName) 没有额度来源，菜单栏会退回显示今日 Token。"
+        }
     }
 
     private var displayHint: String {
@@ -51,6 +104,117 @@ struct SettingsView: View {
         case .tokens: "今日三家 token 合计。"
         case .iconOnly: "只显示图标，适合刘海屏空间紧张时。"
         }
+    }
+
+    // MARK: - 网络
+
+    private var network: some View {
+        Form {
+            Section {
+                Toggle("离线模式", isOn: Binding(
+                    get: { model.offlineMode },
+                    set: { _ in model.toggleOffline() }))
+                Text("开启后 aibar 一个网络请求都不发，连凭据都不会读取。用量分析、成本、按项目归因全部照常 —— 只有 Claude 的实时剩余额度会变成「未连接」。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("实时额度查询") {
+                ForEach(Provider.allCases, id: \.self) { p in
+                    HStack(alignment: .top) {
+                        Circle().fill(p.tint).frame(width: 7, height: 7).padding(.top, 6)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.displayName).font(.system(size: 12, weight: .medium))
+                            Text(LiveQuotaService.availability(for: p))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        if p == .claudeCode {
+                            Toggle("", isOn: $model.liveQuotaClaude)
+                                .labelsHidden()
+                                .onChange(of: model.liveQuotaClaude) { _, _ in
+                                    Task { await model.applyNetworkSettings() }
+                                }
+                                .disabled(model.offlineMode)
+                        } else {
+                            Text("不适用").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+
+            Section("白名单") {
+                Text("aibar 只允许访问下列域名。这是编译期常量，CI 有静态检查强制 —— 源码中出现任何其他 host 的网络调用，构建直接失败。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(NetworkGuard.allowedHosts.sorted(), id: \.self) { host in
+                    Label(host, systemImage: "checkmark.shield")
+                        .font(.system(size: 11, design: .monospaced))
+                }
+            }
+
+            Section {
+                Toggle("额度告警通知", isOn: $model.notifyOnQuota)
+                Button("重新查看首启说明") { model.wantsDisclosure = true }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - 网络活动
+
+    private var activity: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("本次运行的全部网络请求").font(.system(size: 12, weight: .medium))
+                    Text("\(model.networkLog.count) 次 · 全部命中白名单")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("刷新") { Task { await model.refreshNetworkLog() } }
+                    .controlSize(.small)
+            }
+
+            if model.networkLog.isEmpty {
+                VStack(spacing: 5) {
+                    Image(systemName: "network.slash").font(.system(size: 20))
+                        .foregroundStyle(.tertiary)
+                    Text(model.offlineMode ? "离线模式已开启，没有发出任何请求"
+                                           : "本次运行还没有发出任何请求")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(model.networkLog) {
+                    TableColumn("时间") { e in
+                        Text(e.at.formatted(.dateTime.hour().minute().second()))
+                            .font(.system(size: 11, design: .monospaced))
+                    }.width(72)
+                    TableColumn("域名 / 路径") { e in
+                        Text(e.host + e.path)
+                            .font(.system(size: 11, design: .monospaced)).lineLimit(1)
+                    }
+                    TableColumn("状态") { e in
+                        Text(e.status.map(String.init) ?? "—")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(e.ok ? Color.green : Color.orange)
+                    }.width(48)
+                    TableColumn("耗时") { e in
+                        Text("\(Int(e.duration * 1000))ms")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }.width(56)
+                }
+            }
+
+            Text("这里列出的是 aibar 本次运行发出的每一个请求，凭据不会出现在其中。想自己复核可以跑：lsof -i -p $(pgrep aibar)")
+                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .task { await model.refreshNetworkLog() }
     }
 
     private var dataSources: some View {

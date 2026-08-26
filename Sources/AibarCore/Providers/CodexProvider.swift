@@ -65,18 +65,27 @@ public struct CodexProvider: UsageProvider {
                   let date = DateParsing.iso8601UTC(ts)
             else { return }
 
-            // 额度：三家里唯一在本地日志就能拿到官方百分比的
-            if let limits = payload["rate_limits"] as? [String: Any],
-               let primary = limits["primary"] as? [String: Any],
-               let used = jsonDouble(primary["used_percent"]) {
-                let resets = jsonDouble(primary["resets_at"]).map { Date(timeIntervalSince1970: $0) }
-                let q = QuotaStatus(
-                    provider: .codex, usedPercent: used,
-                    windowMinutes: jsonInt(primary["window_minutes"]),
-                    resetsAt: resets, planType: limits["plan_type"] as? String,
-                    observedAt: date, source: .localLog)
-                // 同一次扫描里保留最新的一条
-                if result.quota.map({ $0.observedAt < date }) ?? true { result.quota = q }
+            // 额度：三家里唯一在本地日志就能拿到官方百分比的。
+            //
+            // 必须 primary 和 secondary 都读。Codex 同时给两个窗口
+            // （新版 primary=5 小时 / secondary=7 天），而旧版只有一个
+            // primary=7 天。只读 primary 会让同一个数字在两种含义之间
+            // 静默切换 —— 实测见过 7 天 64% 和 5 小时 12% 混在一起。
+            if let limits = payload["rate_limits"] as? [String: Any] {
+                let plan = limits["plan_type"] as? String
+                for key in ["primary", "secondary"] {
+                    guard let node = limits[key] as? [String: Any],
+                          let used = jsonDouble(node["used_percent"]) else { continue }
+                    let minutes = jsonInt(node["window_minutes"])
+                    guard minutes > 0 else { continue }
+                    let q = QuotaStatus(
+                        provider: .codex, usedPercent: used, windowMinutes: minutes,
+                        resetsAt: jsonDouble(node["resets_at"]).map { Date(timeIntervalSince1970: $0) },
+                        planType: plan, observedAt: date, source: .localLog)
+                    // 同一窗口只保留本次扫描里最新的一条
+                    if let existing = result.quotas[minutes], existing.observedAt >= date { continue }
+                    result.quotas[minutes] = q
+                }
             }
 
             guard let info = payload["info"] as? [String: Any],

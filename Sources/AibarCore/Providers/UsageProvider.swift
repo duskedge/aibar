@@ -4,7 +4,8 @@ import Foundation
 public struct ScanResult: Sendable {
     public var events: [UsageEvent] = []
     public var rateLimits: [RateLimitEvent] = []
-    public var quota: QuotaStatus?
+    /// 按 window_minutes 索引 —— 同一家可能同时有多个窗口的额度。
+    public var quotas: [Int: QuotaStatus] = [:]
     /// 读到的新偏移；写回 scan_state 供下次续读。
     public var newOffset: UInt64
     /// Provider 私有的续读游标（Codex 用它记住上一次的 total）。

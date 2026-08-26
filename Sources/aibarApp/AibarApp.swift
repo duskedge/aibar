@@ -13,6 +13,15 @@ struct AibarApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        // 披露页必须是独立窗口。
+        // 早期版本把它做成挂在 MenuBarExtra 上的 sheet —— 菜单栏弹窗不支持 sheet，
+        // 结果 sheet 弹不出来，还把面板内容整个挡没了。
+        Window("aibar 说明", id: WindowID.disclosure) {
+            DisclosureView().environmentObject(model)
+        }
+        .defaultSize(width: 480, height: 560)
+        .windowResizability(.contentSize)
+
         Window("aibar", id: WindowID.dashboard) {
             DashboardView().environmentObject(model)
         }
@@ -41,16 +50,28 @@ struct MenuBarLabel: View {
             }
         }
         .foregroundStyle(tint)
+        .onChange(of: model.wantsDisclosure) { _, wants in
+            guard wants else { return }
+            model.wantsDisclosure = false
+            openWindow(id: WindowID.disclosure)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         .task {
+            Notifications.requestAuthorizationIfNeeded()
             await model.start()
             // `open -a aibar --args --dashboard` 直接进仪表盘。
             // 也让主窗口这条链路能被脚本验证，不必去合成点击真实菜单栏。
             //
             // 必须让出一轮 runloop：MenuBarExtra 的 label 在 Window scene 注册完成前
             // 就已经渲染，此时 openWindow 找不到目标 id，会静默失败。
+            try? await Task.sleep(for: .milliseconds(400))
             if CommandLine.arguments.contains("--dashboard") {
-                try? await Task.sleep(for: .milliseconds(400))
                 openWindow(id: WindowID.dashboard)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            // 首启披露：还没看过就主动弹出来，而不是等用户点开面板才说
+            if !model.disclosureShown {
+                openWindow(id: WindowID.disclosure)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }

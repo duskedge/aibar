@@ -9,6 +9,7 @@ public actor UsageEngine {
     private let scanner: Scanner
     private let reports: Reports
     private var watcher: FileWatcher?
+    private let liveQuota: LiveQuotaService
     private var scanning = false
     private var lastRefresh = Date.distantPast
     /// 两次刷新之间的最小间隔。
@@ -25,6 +26,17 @@ public actor UsageEngine {
         store = try UsageStore(path: dbPath)
         scanner = Scanner(store: store, providers: providers)
         reports = Reports(store: store, pricing: pricing)
+        liveQuota = LiveQuotaService()
+    }
+
+    public func configureLiveQuota(_ config: LiveQuotaService.Config) async {
+        await liveQuota.update(config: config)
+    }
+
+    /// 拉一次 L2。离线或被关掉时它自己会短路，这里不必再判断。
+    @discardableResult
+    public func refreshLiveQuota(force: Bool = false) async -> LiveQuotaService.Result {
+        await liveQuota.refresh(force: force)
     }
 
     public var watchedPaths: [URL] { scanner.providers.flatMap(\.rootPaths) }
@@ -37,18 +49,26 @@ public actor UsageEngine {
     /// 漏掉的变更下一次 FSEvents 事件会带上，用量统计不需要亚秒级实时。
     /// - Parameter force: 忽略最小间隔（手动点刷新时用）
     @discardableResult
-    public func refresh(force: Bool = false) throws -> Snapshot {
-        guard !scanning else { return try reports.snapshot() }
+    public func refresh(force: Bool = false) async throws -> Snapshot {
+        guard !scanning else { return try await snapshot() }
         if !force, Date.now.timeIntervalSince(lastRefresh) < minRefreshInterval {
-            return try reports.snapshot()
+            return try await snapshot()
         }
         scanning = true
         defer { scanning = false; lastRefresh = .now }
         _ = try scanner.scan()
-        return try reports.snapshot()
+        await liveQuota.refresh()
+        return try await snapshot()
     }
 
-    public func snapshot() throws -> Snapshot { try reports.snapshot() }
+    public func snapshot() async throws -> Snapshot {
+        var snap = try reports.snapshot()
+        let live = await liveQuota.current()
+        snap.liveQuotas = live.quotas
+        snap.quotaFailures = live.failures
+        snap.liveFetchedAt = live.fetchedAt
+        return snap
+    }
 
     public func dashboard(range: DateRange) throws -> DashboardData {
         try reports.dashboard(range: range)
@@ -75,8 +95,8 @@ public actor UsageEngine {
         watcher = nil
     }
 
-    public func rebuild() throws -> Snapshot {
+    public func rebuild() async throws -> Snapshot {
         try store.reset()
-        return try refresh()
+        return try await refresh()
     }
 }

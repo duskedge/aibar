@@ -21,14 +21,23 @@ func writePNG(_ view: some View, to path: String, scale: CGFloat = 2) throws -> 
 }
 
 @MainActor
-func render() throws {
+func render() async throws {
     let args = CommandLine.arguments
     let out = args.count > 1 ? args[1] : "panel.png"
     let dbPath = args.count > 2 ? args[2] : UsageStore.defaultPath
 
     let store = try UsageStore(path: dbPath)
     let reports = Reports(store: store)
-    let snapshot = try reports.snapshot()
+    var snapshot = try reports.snapshot()
+
+    // 除非 --offline，否则拉一次 L2，让截图反映真实状态而不是半截空环
+    if !CommandLine.arguments.contains("--offline") {
+        let service = LiveQuotaService(config: .init(offline: false, enabled: [.claudeCode]))
+        let live = await service.refresh(force: true)
+        snapshot.liveQuotas = live.quotas
+        snapshot.quotaFailures = live.failures
+        snapshot.liveFetchedAt = live.fetchedAt
+    }
 
     let model = AppModel.preview(snapshot: snapshot)
     let view = PopoverView(scrollable: false)
@@ -55,5 +64,5 @@ func render() throws {
           + "\(snapshot.quotas.count) 条额度，\(snapshot.recentSessions.count) 个会话")
 }
 
-do { try MainActor.assumeIsolated { try render() } }
+do { try await render() }
 catch { FileHandle.standardError.write(Data("错误: \(error)\n".utf8)); exit(1) }

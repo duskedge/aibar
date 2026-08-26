@@ -152,18 +152,22 @@ public struct Reports {
 
     public func latestQuota() throws -> [QuotaStatus] {
         var out: [QuotaStatus] = []
+        // 每个 (provider, 窗口) 各取最新一条 —— 5 小时和 7 天是两件事，不能合并
         try store.db.query("""
-            SELECT provider, MAX(observed_at), used_percent, window_minutes,
-                   resets_at, plan_type, source
-            FROM quota_snapshots GROUP BY provider
+            SELECT provider, window_minutes, MAX(observed_at), used_percent,
+                   resets_at, plan_type, source, window_label
+            FROM quota_snapshots_v2
+            GROUP BY provider, window_minutes
+            ORDER BY provider, window_minutes
             """) { r in
             guard let p = r.text(0).flatMap(Provider.init(rawValue:)) else { return }
             out.append(QuotaStatus(
-                provider: p, usedPercent: r.double(2), windowMinutes: r.int(3),
+                provider: p, usedPercent: r.double(3), windowMinutes: r.int(1),
                 resetsAt: r.int(4) > 0 ? Date(timeIntervalSince1970: Double(r.int(4))) : nil,
                 planType: r.text(5),
-                observedAt: Date(timeIntervalSince1970: Double(r.int(1))),
-                source: QuotaStatus.Source(rawValue: r.text(6) ?? "") ?? .localLog))
+                observedAt: Date(timeIntervalSince1970: Double(r.int(2))),
+                source: QuotaStatus.Source(rawValue: r.text(6) ?? "") ?? .localLog,
+                windowLabel: r.text(7)))
         }
         return out
     }

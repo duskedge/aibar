@@ -25,6 +25,23 @@ public enum Fmt {
     }
 
     /// “3 天 2 小时后重置” / “12 分钟后重置”
+    /// 菜单栏用的窗口简称：`5小时` / `7天`。
+    public static func compactWindow(_ minutes: Int) -> String {
+        if minutes >= 1440 { return "\(minutes / 1440)天" }
+        if minutes >= 60 { return "\(minutes / 60)小时" }
+        return "\(minutes)分"
+    }
+
+    /// 菜单栏用的倒计时：`6d21h` / `3h12m` / `45m`。
+    /// 刻意用英文单位缩写 —— 中文单位在菜单栏里太占地方。
+    public static func compactDuration(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        let d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60
+        if d > 0 { return h > 0 ? "\(d)d\(h)h" : "\(d)d" }
+        if h > 0 { return m > 0 ? "\(h)h\(m)m" : "\(h)h" }
+        return "\(max(1, m))m"
+    }
+
     public static func duration(_ seconds: TimeInterval) -> String {
         let s = max(0, seconds)
         let days = Int(s) / 86400

@@ -9,7 +9,42 @@ public struct Snapshot: Sendable {
     public var today = Reports.Totals()
     public var yesterday = Reports.Totals()
     public var todayByProvider: [ProviderStat] = []
+    /// 本地日志得来的额度（目前只有 Codex）。
     public var quotas: [QuotaStatus] = []
+    /// L2 官方接口得来的额度。
+    public var liveQuotas: [QuotaStatus] = []
+    /// L2 失败原因。UI 要显示"未连接 + 为什么"，不能只留个空环。
+    public var quotaFailures: [Provider: String] = [:]
+    public var liveFetchedAt: Date?
+    public var offlineMode = false
+
+    /// 某一家的全部额度条目，本地与接口合并后按窗口升序。
+    public func quotas(for provider: Provider) -> [QuotaStatus] {
+        (quotas + liveQuotas)
+            .filter { $0.provider == provider }
+            .sorted { $0.windowMinutes < $1.windowMinutes }
+    }
+
+    public var allQuotas: [QuotaStatus] { quotas + liveQuotas }
+
+    /// 最紧张的一条 —— 菜单栏默认用它。
+    public var tightestQuota: QuotaStatus? {
+        allQuotas.max { $0.usedPercent < $1.usedPercent }
+    }
+
+    /// 按用户在设置里选的目标与窗口挑一条。
+    public func quota(target: MenuBarTarget, window: MenuBarWindow) -> QuotaStatus? {
+        let pool: [QuotaStatus] = switch target {
+        case .tightest: allQuotas
+        case .provider(let p): allQuotas.filter { $0.provider == p }
+        }
+        guard !pool.isEmpty else { return nil }
+        return switch window {
+        case .tightest: pool.max { $0.usedPercent < $1.usedPercent }
+        case .shortest: pool.min { $0.windowMinutes < $1.windowMinutes }
+        case .longest: pool.max { $0.windowMinutes < $1.windowMinutes }
+        }
+    }
     public var recentSessions: [SessionRow] = []
     public var rateLimits = Reports.RateLimitSummary(count: 0, last: nil, messages: [])
     public var dailySeries: [DayPoint] = []
@@ -64,7 +99,8 @@ extension QuotaStatus {
     }
 
     public var windowDescription: String {
-        windowMinutes >= 1440 ? "\(windowMinutes / 1440) 天窗口" : "\(windowMinutes / 60) 小时窗口"
+        if let windowLabel { return windowLabel }
+        return windowMinutes >= 1440 ? "\(windowMinutes / 1440) 天窗口" : "\(windowMinutes / 60) 小时窗口"
     }
 
     /// 这条额度还有多新。日志型额度只在用户跑对话时才更新，

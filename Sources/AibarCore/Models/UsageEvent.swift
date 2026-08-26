@@ -76,13 +76,17 @@ public struct QuotaStatus: Sendable, Hashable {
     public let planType: String?
     public let observedAt: Date
     public let source: Source
+    /// Claude 一次会回多个窗口（5 小时 / 7 天 / 7 天 Opus），靠它区分。
+    public let windowLabel: String?
 
     public enum Source: String, Sendable { case localLog, officialAPI }
 
     public init(provider: Provider, usedPercent: Double, windowMinutes: Int,
-                resetsAt: Date?, planType: String?, observedAt: Date, source: Source) {
+                resetsAt: Date?, planType: String?, observedAt: Date, source: Source,
+                windowLabel: String? = nil) {
         self.provider = provider; self.usedPercent = usedPercent
         self.windowMinutes = windowMinutes; self.resetsAt = resetsAt
         self.planType = planType; self.observedAt = observedAt; self.source = source
+        self.windowLabel = windowLabel
     }
 }

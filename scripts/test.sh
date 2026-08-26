@@ -33,4 +33,6 @@ swiftc -swift-version 6 -target arm64-apple-macosx14.0 \
   Tests/AibarCoreTests/*.swift "$OUT/TestMain.swift"
 
 echo "→ 运行"
-"$OUT/aibar-tests"
+# 测试进程一律不许读凭据、不许联网。
+# 曾经有一次单测的 L2 默认是开的，直接弹出了用户的钥匙串授权框。
+AIBAR_NO_CREDENTIALS=1 "$OUT/aibar-tests"

@@ -174,3 +174,81 @@ struct SnapshotTests {
         #expect(await engine.lastRefreshedAt != before, "force 应绕过节流")
     }
 }
+
+@Suite("菜单栏显示选择")
+struct MenuBarTests {
+
+    func quota(_ p: Provider, _ percent: Double, minutes: Int,
+               source: QuotaStatus.Source = .localLog) -> QuotaStatus {
+        QuotaStatus(provider: p, usedPercent: percent, windowMinutes: minutes,
+                    resetsAt: .now.addingTimeInterval(3600), planType: nil,
+                    observedAt: .now, source: source)
+    }
+
+    func snapshot() -> Snapshot {
+        var s = Snapshot()
+        s.quotas = [quota(.codex, 17, minutes: 300), quota(.codex, 3, minutes: 10080)]
+        s.liveQuotas = [quota(.claudeCode, 86, minutes: 300, source: .officialAPI),
+                        quota(.claudeCode, 9, minutes: 10080, source: .officialAPI)]
+        return s
+    }
+
+    @Test("默认显示最紧张的一条")
+    func tightestAcrossProviders() {
+        let q = snapshot().quota(target: .tightest, window: .tightest)
+        #expect(q?.provider == .claudeCode)
+        #expect(q?.usedPercent == 86)
+    }
+
+    /// 用户盯着某一家干活时，固定显示那家。
+    @Test("可以固定显示某一家")
+    func pinnedProvider() {
+        let q = snapshot().quota(target: .provider(.codex), window: .tightest)
+        #expect(q?.provider == .codex)
+        #expect(q?.usedPercent == 17)
+    }
+
+    @Test("可以指定长短窗口")
+    func windowSelection() {
+        let s = snapshot()
+        #expect(s.quota(target: .provider(.claudeCode), window: .shortest)?.windowMinutes == 300)
+        #expect(s.quota(target: .provider(.claudeCode), window: .longest)?.windowMinutes == 10080)
+        #expect(s.quota(target: .provider(.claudeCode), window: .longest)?.usedPercent == 9)
+    }
+
+    /// 选了一家没有额度来源的，不能瞎编，返回 nil 让 UI 退回显示 token。
+    @Test("没有额度来源的一家返回 nil")
+    func providerWithoutQuota() {
+        #expect(snapshot().quota(target: .provider(.grok), window: .tightest) == nil)
+    }
+
+    @Test("MenuBarTarget 能往返编码")
+    func targetRoundTrip() {
+        for t in MenuBarTarget.allCases {
+            #expect(MenuBarTarget(rawValue: t.rawValue) == t)
+        }
+        #expect(MenuBarTarget(rawValue: "不存在") == nil)
+    }
+
+    @Test("菜单栏紧凑格式")
+    func compactFormatting() {
+        #expect(Fmt.compactWindow(300) == "5小时")
+        #expect(Fmt.compactWindow(10080) == "7天")
+        #expect(Fmt.compactDuration(86400 * 6 + 3600 * 21) == "6d21h")
+        #expect(Fmt.compactDuration(3600 * 3 + 60 * 12) == "3h12m")
+        #expect(Fmt.compactDuration(45 * 60) == "45m")
+        #expect(Fmt.compactDuration(-5) == "1m", "已过期不显示负数")
+    }
+
+    /// 图标报警必须跟着**当前显示的那条**走。
+    /// 显示 A 却按 B 的水位变红，用户会以为 A 出了问题。
+    @Test("告警等级跟随所显示的额度")
+    func alertFollowsDisplayedQuota() {
+        let s = snapshot()
+        let t = Thresholds(warn: 80, critical: 95)
+        let claude = s.quota(target: .provider(.claudeCode), window: .tightest)!
+        let codex = s.quota(target: .provider(.codex), window: .tightest)!
+        #expect(t.level(for: claude.usedPercent) == .warning)
+        #expect(t.level(for: codex.usedPercent) == .normal)
+    }
+}
