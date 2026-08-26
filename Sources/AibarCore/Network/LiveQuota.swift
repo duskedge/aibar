@@ -103,10 +103,19 @@ public actor LiveQuotaService {
 
         /// 默认**关闭**。L2 必须由 app 在展示过披露页之后显式打开 ——
         /// 这样单测、CLI、离屏渲染都不会意外联网。
+        /// 手动刷新的硬下限。`force` 可以跳过 `minInterval`，但跳不过它 ——
+        /// 否则连点刷新按钮就是连着打接口，正是把自己打成 429 的那条路。
+        public var forceFloor: TimeInterval
+
         public init(offline: Bool = true,
                     enabled: Set<Provider> = [],
-                    minInterval: TimeInterval = LiveQuotaService.defaultMinInterval) {
-            self.offline = offline; self.enabled = enabled; self.minInterval = minInterval
+                    minInterval: TimeInterval = LiveQuotaService.defaultMinInterval,
+                    forceFloor: TimeInterval = LiveQuotaService.defaultForceFloor) {
+            self.offline = offline; self.enabled = enabled
+            self.minInterval = minInterval
+            // force 不该比常规间隔更严：minInterval 设成 0 表示"不限流"，
+            // 那 forceFloor 也该跟着放开。
+            self.forceFloor = min(forceFloor, minInterval)
         }
     }
 
@@ -114,6 +123,9 @@ public actor LiveQuotaService {
     /// `oauth/usage`，叠在一起很容易 429。5 分钟够用，额度不是秒级数据。
     public static let defaultMinInterval: TimeInterval = 300
     /// 第一次撞 429 的静默时长。之后按 2 倍往上加，封顶 `maxRateLimitBackoff`。
+    /// 手动刷新最短间隔。
+    public static let defaultForceFloor: TimeInterval = 15
+
     public static let rateLimitBackoff: TimeInterval = 300
     public static let maxRateLimitBackoff: TimeInterval = 1800
 
@@ -166,7 +178,9 @@ public actor LiveQuotaService {
             return stamped(cached)
         }
         if Date.now < backoffUntil { return stamped(cached) }
-        if !force, Date.now.timeIntervalSince(lastFetch) < config.minInterval {
+        let since = Date.now.timeIntervalSince(lastFetch)
+        // force 只放宽到 forceFloor，不是完全不限
+        if since < (force ? config.forceFloor : config.minInterval) {
             return stamped(cached)
         }
         lastFetch = .now

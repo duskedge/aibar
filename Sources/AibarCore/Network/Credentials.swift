@@ -45,6 +45,8 @@ public enum Credentials {
         case expired(String)
         /// 用户点了拒绝，或本会话已经弹过一次。不要接着打第二次。
         case accessDenied
+        /// 钥匙串锁着。临时状态，解锁后自动恢复。
+        case locked
 
         public var description: String {
             switch self {
@@ -52,6 +54,7 @@ public enum Credentials {
             case .unreadable(let why): "凭据无法解析：\(why)"
             case .expired(let who): "\(who) 的登录已过期，请重新登录该 CLI"
             case .accessDenied: "钥匙串访问被拒绝。点「始终允许」后不要立刻重编译 —— 临时签名每次都是新应用"
+            case .locked: "钥匙串已锁定，解锁后会自动重试"
             }
         }
     }
@@ -109,6 +112,9 @@ public enum Credentials {
         case .denied:
             deniedThisSession = true
             throw CredentialError.accessDenied
+        case .locked:
+            // 不记 deniedThisSession —— 解锁后下一轮轮询还该再试
+            throw CredentialError.locked
         case .notFound:
             break
         }
@@ -120,6 +126,8 @@ public enum Credentials {
         case .denied:
             deniedThisSession = true
             throw CredentialError.accessDenied
+        case .locked:
+            throw CredentialError.locked
         case .notFound:
             throw CredentialError.notFound("Keychain: Claude Code-credentials")
         }
@@ -129,12 +137,22 @@ public enum Credentials {
         case data(Data)
         case notFound
         case denied
+        /// 钥匙串锁着，下次还能再试。
+        case locked
     }
 
-    /// 用户点拒绝 / 取消 / 认证失败，都不该再弹。
+    /// 用户点了拒绝 / 取消，本会话就别再弹了。
+    ///
+    /// 注意 `errSecInteractionNotAllowed` **不算**：它表示钥匙串当前是锁着的、
+    /// 且此刻不允许弹 UI —— 这是临时状态，用户解锁后就该能读到。
+    /// 把它记成"本会话已拒绝"会让 aibar 在解锁之后依然拒绝查询，直到重启。
     private static func isDenied(_ status: OSStatus) -> Bool {
         status == errSecUserCanceled || status == errSecAuthFailed
-            || status == errSecInteractionNotAllowed
+    }
+
+    /// 钥匙串锁着，稍后可再试。不进 `deniedThisSession`。
+    private static func isTemporarilyUnavailable(_ status: OSStatus) -> Bool {
+        status == errSecInteractionNotAllowed
     }
 
     private static func readKeychain(account: Bool, returnData: Bool) -> KeychainRead {
@@ -157,6 +175,7 @@ public enum Credentials {
         }
         if status == errSecItemNotFound { return .notFound }
         if isDenied(status) { return .denied }
+        if isTemporarilyUnavailable(status) { return .locked }
         return .notFound
     }
 
@@ -195,11 +214,11 @@ public enum Credentials {
         if FileManager.default.fileExists(atPath: file.path) { return true }
         switch readKeychain(account: false, returnData: false) {
         case .data: return true
-        case .denied, .notFound: break
+        case .denied, .locked, .notFound: break
         }
         switch readKeychain(account: true, returnData: false) {
         case .data: return true
-        case .denied, .notFound: return false
+        case .denied, .locked, .notFound: return false
         }
     }
 

@@ -312,3 +312,73 @@ struct NetworkTests {
         #expect(sessions[1]["gitBranch"] == nil, "没有分支就不输出这个键")
     }
 }
+
+@Suite("轮询频率约束")
+struct ThrottleTests {
+
+    struct CountingClient: LiveQuotaClient {
+        let provider = Provider.claudeCode
+        let endpointDescription = "counting"
+        let counter: Counter
+        func fetch() async throws -> [QuotaStatus] {
+            await counter.bump()
+            return [QuotaStatus(provider: .claudeCode, usedPercent: 10, windowMinutes: 300,
+                                resetsAt: nil, planType: nil, observedAt: .now,
+                                source: .officialAPI)]
+        }
+    }
+
+    actor Counter {
+        private(set) var count = 0
+        func bump() { count += 1 }
+    }
+
+    /// 连点刷新按钮曾经就是连着打接口，正是把自己打成 429 的那条路。
+    /// force 可以跳过常规间隔，但跳不过 forceFloor。
+    @Test("force 也有硬下限，连点不会连着发请求")
+    func forceHasFloor() async {
+        let counter = Counter()
+        let service = LiveQuotaService(
+            config: .init(offline: false, enabled: [.claudeCode],
+                          minInterval: 300, forceFloor: 60),
+            clients: [CountingClient(counter: counter)])
+
+        for _ in 0..<5 { _ = await service.refresh(force: true) }
+        #expect(await counter.count == 1, "连点 5 次只应发出 1 个请求")
+    }
+
+    @Test("forceFloor 为 0 时 force 可以连续拉取")
+    func forceFloorZeroAllowsRepeat() async {
+        let counter = Counter()
+        let service = LiveQuotaService(
+            config: .init(offline: false, enabled: [.claudeCode],
+                          minInterval: 300, forceFloor: 0),
+            clients: [CountingClient(counter: counter)])
+        for _ in 0..<3 { _ = await service.refresh(force: true) }
+        #expect(await counter.count == 3)
+    }
+
+    /// 退避是指数的，且有上限。
+    @Test("429 退避按指数增长并封顶")
+    func backoffGrowsAndCaps() {
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 1) == 300)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 2) == 600)
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 3) == 1200)
+        let capped = LiveQuotaService.backoffDuration(consecutiveFailures: 20)
+        #expect(capped == LiveQuotaService.maxRateLimitBackoff)
+        #expect(capped <= 3600)
+        // 0 或负数不该算出比一次失败还短的退避
+        #expect(LiveQuotaService.backoffDuration(consecutiveFailures: 0) == 300)
+    }
+
+    /// 钥匙串锁定是临时状态，不能记成本会话永久拒绝 ——
+    /// 否则用户解锁之后 aibar 依然拒绝查询，直到重启。
+    @Test("钥匙串锁定与用户拒绝是两回事")
+    func lockedIsNotDenied() {
+        let locked = Credentials.CredentialError.locked
+        let denied = Credentials.CredentialError.accessDenied
+        #expect(locked.description.contains("解锁"))
+        #expect(denied.description.contains("拒绝"))
+        #expect(locked.description != denied.description)
+    }
+}

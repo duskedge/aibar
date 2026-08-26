@@ -28,8 +28,11 @@ public struct Snapshot: Sendable {
 
     /// 某一家的全部额度条目，本地与接口合并后按窗口升序。
     ///
-    /// 同一窗口只留一条：官方接口优先，其次取更新的 observedAt。
-    /// 这样 429 时 SQLite 里上次成功的结果还能撑着环，不会和内存缓存叠出两圈。
+    /// 同一窗口只留一条，取 observedAt 更新的那条。
+    ///
+    /// 接口结果的 observedAt 是抓取时刻，天然比日志里的时间戳新，所以不必
+    /// 额外给来源排优先级。这样 429 时 SQLite 里上次成功的结果还能撑着环，
+    /// 不会和内存缓存叠出两圈。
     public func quotas(for provider: Provider) -> [QuotaStatus] {
         Self.merged(quotas + liveQuotas)
             .filter { $0.provider == provider }
