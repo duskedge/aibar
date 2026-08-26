@@ -74,21 +74,27 @@ jobs:
       # 未签名包必须在 Release 里说清楚怎么打开，否则用户只会看到
       # "已损坏，无法打开" 这种误导性提示。
       - name: 组装发布说明
-        id: notes
         run: |
-          {
-            echo "notes<<EOF"
-            cat .github/release-notes.md
-            if [ "$HAS_SIGNING" != "true" ]; then
-              cat .github/release-notes-unsigned.md
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          cat .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          if [ "$HAS_SIGNING" != "true" ]; then
+            cat .github/release-notes-unsigned.md >> "$RUNNER_TEMP/notes.md"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
 
+      # 用 runner 自带的 gh，不引第三方 action。
+      # 关键是 `gh release edit` —— 重打标签时 Release 已经存在，
+      # 必须显式覆盖说明，否则会一直留着第一次生成的旧内容。
       - name: 发布
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          files: dist/*.dmg
-          generate_release_notes: true
-          body: ${{ steps.notes.outputs.notes }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release upload "$TAG" dist/*.dmg dist/*.sha256 --clobber
+          else
+            gh release create "$TAG" dist/*.dmg dist/*.sha256 \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
