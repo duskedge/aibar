@@ -83,8 +83,12 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       # 用 runner 自带的 gh，不引第三方 action。
-      # 关键是 `gh release edit` —— 重打标签时 Release 已经存在，
-      # 必须显式覆盖说明，否则会一直留着第一次生成的旧内容。
+      #
+      # 两个坑：
+      # 1. Release 已存在时必须 `gh release edit` 显式覆盖说明，
+      #    否则会一直留着第一次生成的旧内容。
+      # 2. **删除标签会把 Release 变成草稿**，草稿对外不可见。
+      #    所以 edit 时要带 `--draft=false` 把它重新发布出去。
       - name: 发布
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,9 +96,13 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release edit "$TAG" --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/notes.md" --draft=false --prerelease=false
             gh release upload "$TAG" dist/*.dmg dist/*.sha256 --clobber
           else
             gh release create "$TAG" dist/*.dmg dist/*.sha256 \
               --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
           fi
+          echo "--- 发布后状态 ---"
+          gh release view "$TAG" --json isDraft,name,assets \
+            --jq '"draft=\(.isDraft) name=\(.name) assets=\([.assets[].name]|join(","))"' 
