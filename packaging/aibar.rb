@@ -1,6 +1,10 @@
-# Homebrew Cask。发布时由 CI 把 version / sha256 填进 waveblog/homebrew-tap。
+# Homebrew Cask 模板。
 #
-#   brew install --cask waveblog/tap/aibar
+# 目前**还没有** tap 仓库，所以 brew 安装方式尚未可用 ——
+# README 与 Release 说明里都不要提它，免得给用户一条跑不通的命令。
+#
+# 启用步骤见 docs/RELEASING.md：建一个名为 homebrew-tap 的仓库，
+# 把发布时生成的 dist/aibar.rb 放进 Casks/。
 cask "aibar" do
   version "0.5.0"
   sha256 "REPLACE_WITH_DMG_SHA256"

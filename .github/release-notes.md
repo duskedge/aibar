@@ -1,10 +1,6 @@
 ## 安装
 
-```bash
-brew install --cask waveblog/tap/aibar
-```
-
-或下载下面的 DMG。
+下载下面的 DMG，把 `aibar.app` 拖进「应用程序」。
 
 ## 关于联网
 
