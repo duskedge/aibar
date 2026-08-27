@@ -10,7 +10,13 @@ struct NetworkTests {
     /// 白名单是这个产品的核心承诺，改动必须是有意识的。
     @Test("白名单只含官方域名")
     func allowlistIsMinimal() {
-        #expect(NetworkGuard.allowedHosts == ["api.anthropic.com"])
+        #expect(NetworkGuard.allowedHosts == [
+            "api.anthropic.com",
+            "api.github.com",
+            "github.com",
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com",
+        ])
     }
 
     @Test("非白名单域名被拒绝且留下记录")
@@ -310,6 +316,112 @@ struct NetworkTests {
         #expect(sessions.count == 2)
         #expect(sessions[1]["estimatedCostUSD"] is NSNull, "缺定价必须是 null")
         #expect(sessions[1]["gitBranch"] == nil, "没有分支就不输出这个键")
+    }
+}
+
+@Suite("GitHub 更新检查")
+struct UpdateTests {
+
+    func fixture(tag: String = "v0.9.0",
+                 prerelease: Bool = false,
+                 dmg: String? = "https://github.com/duskedge/aibar/releases/download/v0.9.0/aibar-v0.9.0.dmg",
+                 sha: String? = "https://github.com/duskedge/aibar/releases/download/v0.9.0/aibar-v0.9.0.dmg.sha256") -> Data {
+        var assets: [[String: String]] = []
+        if let dmg { assets.append(["name": "aibar-\(tag).dmg", "browser_download_url": dmg]) }
+        if let sha { assets.append(["name": "aibar-\(tag).dmg.sha256", "browser_download_url": sha]) }
+        let payload: [String: Any] = [
+            "tag_name": tag,
+            "draft": false,
+            "prerelease": prerelease,
+            "body": "fixes",
+            "html_url": "https://github.com/duskedge/aibar/releases/tag/\(tag)",
+            "assets": assets,
+        ]
+        return try! JSONSerialization.data(withJSONObject: payload)
+    }
+
+    @Test("版本比较认 semver，忽略 v 前缀")
+    func versionCompare() {
+        #expect(AppUpdate.isNewer("0.5.2", than: "0.5.1"))
+        #expect(AppUpdate.isNewer("v0.6.0", than: "0.5.9"))
+        #expect(!AppUpdate.isNewer("0.5.1", than: "0.5.1"))
+        #expect(!AppUpdate.isNewer("0.5.0", than: "0.5.1"))
+        #expect(AppUpdate.compare("1.0.0", "1.0") == .orderedSame)
+    }
+
+    @Test("解析 GitHub latest Release")
+    func parseRelease() throws {
+        let r = try AppUpdate.parseRelease(fixture())
+        #expect(r.version == "0.9.0")
+        #expect(r.tag == "v0.9.0")
+        #expect(r.dmgURL.path.hasSuffix(".dmg"))
+        #expect(r.sha256URL != nil)
+    }
+
+    @Test("没有 DMG 时报错")
+    func missingDMG() {
+        #expect(throws: NetworkGuard.NetworkError.self) {
+            _ = try AppUpdate.parseRelease(fixture(dmg: nil, sha: nil))
+        }
+    }
+
+    @Test("当前版本不低于 latest 时判定为已最新")
+    func checkUpToDate() async throws {
+        let status = try await AppUpdate.check(current: "0.9.0", fetch: { self.fixture(tag: "v0.9.0") })
+        #expect(status == .upToDate)
+    }
+
+    @Test("latest 更高时给出可更新")
+    func checkAvailable() async throws {
+        let status = try await AppUpdate.check(current: "0.5.1", fetch: { self.fixture(tag: "v0.9.0") })
+        guard case .available(let r) = status else {
+            Issue.record("应得到 available，实际 \(status)")
+            return
+        }
+        #expect(r.version == "0.9.0")
+    }
+
+    @Test("sha256 文件解析取第一个 64 位 hex")
+    func parseSHA() {
+        #expect(AppUpdate.parseSHA256("abc") == nil)
+        let hex = String(repeating: "ab", count: 32)
+        #expect(AppUpdate.parseSHA256("\(hex)  aibar-v0.9.0.dmg\n") == hex)
+        #expect(AppUpdate.sha256(of: Data("hi".utf8)).count == 64)
+    }
+
+    @Test("下载后校验失败则拒绝安装")
+    func verifyRejectsMismatch() async {
+        let release = try! AppUpdate.parseRelease(fixture())
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aibar-update-test-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await #expect(throws: NetworkGuard.NetworkError.self) {
+            _ = try await AppUpdate.downloadAndVerify(release, to: dir) { url in
+                if url.path.hasSuffix(".sha256") {
+                    return Data("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  x.dmg\n".utf8)
+                }
+                return Data("not-the-bytes-that-hash-to-aaaa".utf8)
+            }
+        }
+    }
+
+    @Test("校验通过则写出 dmg")
+    func verifyAcceptsMatch() async throws {
+        let payload = Data("dmg-bytes".utf8)
+        let hex = AppUpdate.sha256(of: payload)
+        let release = try AppUpdate.parseRelease(fixture())
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aibar-update-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = try await AppUpdate.downloadAndVerify(release, to: dir) { target in
+            if target.path.hasSuffix(".sha256") {
+                return Data("\(hex)  aibar-v0.9.0.dmg\n".utf8)
+            }
+            return payload
+        }
+        #expect(try Data(contentsOf: url) == payload)
     }
 }
 

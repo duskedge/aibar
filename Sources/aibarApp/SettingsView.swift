@@ -222,6 +222,13 @@ struct SettingsView: View {
                 }
             }
 
+            Section("应用更新") {
+                Toggle("自动检查更新", isOn: $model.autoCheckUpdates)
+                Text("启动后向 GitHub 查询是否有新版本，每天最多一次。关闭后仍可在关于页手动检查。离线模式下不会检查。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section {
                 Toggle("额度告警通知", isOn: $model.notifyOnQuota)
                 Button("重新查看首启说明") { model.wantsDisclosure = true }
@@ -331,11 +338,15 @@ struct SettingsView: View {
     }
 
     private var about: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Image(systemName: "gauge.with.needle").font(.system(size: 34))
             Text("aibar").font(.system(size: 17, weight: .semibold))
+            Text(L("版本 %@", AibarVersion.current))
+                .font(.caption).foregroundStyle(.secondary)
             Text("Claude Code / Codex / Grok 用量统计")
                 .font(.caption).foregroundStyle(.secondary)
+
+            updateBlock
 
             Divider().padding(.horizontal, 60).padding(.vertical, 4)
 
@@ -347,5 +358,47 @@ struct SettingsView: View {
             .font(.caption2).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    @ViewBuilder
+    private var updateBlock: some View {
+        VStack(spacing: 8) {
+            switch model.updateStatus {
+            case .idle:
+                Text("尚未检查更新").font(.caption).foregroundStyle(.secondary)
+            case .checking:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("正在检查…").font(.caption).foregroundStyle(.secondary)
+                }
+            case .upToDate:
+                Text("已是最新版本").font(.caption).foregroundStyle(.green)
+            case .available(let release):
+                Text(L("发现新版本 v%@", release.version))
+                    .font(.caption).foregroundStyle(.primary)
+                if model.isUpdating {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("正在下载并安装…").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else if model.canSelfUpdate {
+                    Button("立即更新") { Task { await model.installAvailableUpdate() } }
+                } else {
+                    Button("打开下载页") { model.openReleasePage() }
+                }
+            case .failed(let why):
+                Text(why).font(.caption).foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
+
+            Button("检查更新") { Task { await model.checkForUpdate(force: true) } }
+                .disabled(model.offlineMode || model.isUpdating || model.isCheckingUpdate)
+            if model.offlineMode {
+                Text("离线模式已开启，无法检查更新")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
     }
 }

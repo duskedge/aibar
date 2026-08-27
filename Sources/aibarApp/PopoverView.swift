@@ -15,6 +15,7 @@ struct PopoverView: View {
             header
             Divider()
             networkBar
+            updateBanner
 
             switch model.phase {
             case .launching, .indexing:
@@ -109,6 +110,42 @@ struct PopoverView: View {
             return L(why.contains("429") ? "官方接口限流中，稍后自动重试" : "官方接口未连接")
         }
         return L("已连接")
+    }
+
+    @ViewBuilder
+    private var updateBanner: some View {
+        if let release = model.availableRelease {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.app")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("有新版本 v%@", release.version))
+                        .font(.system(size: 11, weight: .medium))
+                    Text("GitHub Release")
+                        .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if model.isUpdating {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                } else if model.canSelfUpdate {
+                    Button("立即更新") {
+                        Task { await model.installAvailableUpdate() }
+                    }
+                    .font(.system(size: 10.5, weight: .medium))
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                } else {
+                    Button("打开下载页") { model.openReleasePage() }
+                        .font(.system(size: 10.5, weight: .medium))
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.08)))
+            .padding(.horizontal, 14).padding(.top, 8)
+        }
     }
 
     // MARK: - 主体
@@ -264,7 +301,7 @@ struct PopoverView: View {
                     }
                 }
                 Text(tightest.windowDescription
-                     + (tightest.timeUntilReset.map { " · " + L("%@后重置", Fmt.duration($0)) } ?? ""))
+                     + (tightest.resetCaption().map { " · " + $0 } ?? ""))
                     .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
 
                 ForEach(others, id: \.windowMinutes) { q in
@@ -272,6 +309,9 @@ struct PopoverView: View {
                         Text(q.windowDescription).font(.system(size: 9.5)).foregroundStyle(.tertiary)
                         Text(Fmt.percent(q.usedPercent))
                             .font(.system(size: 9.5)).monospacedDigit().foregroundStyle(.secondary)
+                        if q.hasExpired() {
+                            Text("已重置").font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                        }
                     }
                 }
 

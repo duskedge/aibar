@@ -153,6 +153,9 @@
 
 /* ---- 首启披露 ---- */
 "aibar 会做这两件事" = "aibar does two things";
+"aibar 会做这几件事" = "aibar does a few things";
+"检查应用更新" = "Check for app updates";
+"启动后会向 GitHub 查询是否有新版本。发现更新后可以在面板里一键下载并替换当前应用。这条请求**不携带任何凭据**，可在设置里关掉自动检查。" = "After launch it asks GitHub whether a newer version exists. If one does, you can download and replace the running app from the panel. That request carries **no credentials**, and auto-check can be turned off in Settings.";
 "装上就能用，但你有权先知道它在干什么。" = "It works out of the box — but you deserve to know what it does first.";
 "读取本地会话日志" = "Read local session logs";
 "查询实时剩余额度" = "Query live remaining quota";
@@ -222,3 +225,21 @@
 "%@ 额度告警" = "%@ quota warning";
 "%@已用 %@" = "%@ is %@ used";
 "，%@后重置" = ", resets in %@";
+"已重置" = "reset";
+"有新版本 v%@" = "Update available: v%@";
+"立即更新" = "Update now";
+"打开下载页" = "Open download page";
+"GitHub Release" = "GitHub Release";
+"自动检查更新" = "Check for updates automatically";
+"启动后向 GitHub 查询是否有新版本，每天最多一次。关闭后仍可在关于页手动检查。离线模式下不会检查。" = "Asks GitHub for a newer version after launch, at most once a day. You can still check manually from About after turning this off. Offline mode skips the check.";
+"应用更新" = "Updates";
+"版本 %@" = "Version %@";
+"尚未检查更新" = "Not checked yet";
+"正在检查…" = "Checking…";
+"已是最新版本" = "You're up to date";
+"发现新版本 v%@" = "New version v%@";
+"正在下载并安装…" = "Downloading and installing…";
+"检查更新" = "Check for updates";
+"离线模式已开启，无法检查更新" = "Offline mode is on — can't check for updates";
+"凭据只发给上面列出的额度接口，检查更新不带任何凭据" = "Credentials only go to the quota endpoints above; update checks carry none";
+"除白名单域名外，aibar 不与任何服务器通信" = "aibar talks to no servers outside the allowlist";

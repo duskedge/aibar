@@ -31,6 +31,8 @@ public enum SettingsKey {
     public static let menuBarShowReset = "menuBarShowReset"
     public static let budgets = "budgets"
     public static let language = "interfaceLanguage"
+    /// 启动后自动查 GitHub Release。关闭后仍可在关于页手动检查。
+    public static let autoCheckUpdates = "autoCheckUpdates"
 }
 
 public struct Thresholds: Sendable {

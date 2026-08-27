@@ -19,7 +19,7 @@ struct AibarApp: App {
         Window("aibar 说明", id: WindowID.disclosure) {
             DisclosureView().environmentObject(model)
         }
-        .defaultSize(width: 480, height: 560)
+        .defaultSize(width: 480, height: 620)
         .windowResizability(.contentSize)
 
         Window("aibar", id: WindowID.dashboard) {

@@ -18,13 +18,14 @@ struct DisclosureView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     layerOne
                     layerTwo
+                    layerThree
                 }
                 .padding(20)
             }
             Divider()
             footer
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 480, height: 620)
         .raisesAppWindow(WindowID.disclosure)
     }
 
@@ -32,7 +33,7 @@ struct DisclosureView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
                 Image(systemName: "gauge.with.needle").font(.system(size: 17))
-                Text("aibar 会做这两件事").font(.system(size: 16, weight: .semibold))
+                Text("aibar 会做这几件事").font(.system(size: 16, weight: .semibold))
             }
             Text("装上就能用，但你有权先知道它在干什么。")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -85,12 +86,26 @@ struct DisclosureView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     bullet("凭据只在内存中使用 —— 不落库、不写日志、不进导出文件")
-                    bullet("除上述域名外，aibar 不与任何服务器通信")
+                    bullet("凭据只发给上面列出的额度接口，检查更新不带任何凭据")
+                    bullet("除白名单域名外，aibar 不与任何服务器通信")
                     bullet("域名白名单是编译期常量，CI 有静态检查强制")
                     bullet("设置 → 网络活动 可以看到每一个请求的时间、域名、状态码")
                 }
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary.opacity(0.3)))
+            }
+        }
+    }
+
+    private var layerThree: some View {
+        item(tag: "L3", tint: .blue, title: "检查应用更新") {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("启动后会向 GitHub 查询是否有新版本。发现更新后可以在面板里一键下载并替换当前应用。这条请求**不携带任何凭据**，可在设置里关掉自动检查。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("api.github.com / github.com")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -126,6 +141,7 @@ struct DisclosureView: View {
         Task {
             await model.applyNetworkSettings()
             await model.refresh(force: true)
+            await model.checkForUpdate()
         }
         dismissWindow(id: WindowID.disclosure)
     }

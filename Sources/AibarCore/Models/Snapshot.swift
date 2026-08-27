@@ -51,7 +51,7 @@ public struct Snapshot: Sendable {
         return t > 0 ? t : nil
     }
 
-    static func merged(_ rows: [QuotaStatus]) -> [QuotaStatus] {
+    static func merged(_ rows: [QuotaStatus], now: Date = .now) -> [QuotaStatus] {
         var byKey: [String: QuotaStatus] = [:]
         for q in rows {
             let key = "\(q.provider.rawValue)-\(q.windowMinutes)"
@@ -62,7 +62,9 @@ public struct Snapshot: Sendable {
                 byKey[key] = q
             }
         }
-        return Array(byKey.values)
+        // 先挑最新观测，再按重置时刻归零。反过来会把一条过期的 12%
+        // 和一条未过期的 5% 比错，也可能用过期行盖住更新的行。
+        return Array(byKey.values.map { $0.resolved(now: now) })
     }
 
     /// 最紧张的一条 —— 菜单栏默认用它。
@@ -147,5 +149,34 @@ extension QuotaStatus {
     /// 太旧的必须让用户看见，不能装作实时。
     public func isStale(now: Date = .now, tolerance: TimeInterval = 3600) -> Bool {
         now.timeIntervalSince(observedAt) > tolerance
+    }
+
+    /// 官方重置时刻已经过去。本地日志不会在空闲时补一条 0%，
+    /// 必须在这里把过期窗口归零，否则会一直显示重置前的百分比。
+    public func hasExpired(now: Date = .now) -> Bool {
+        guard let resetsAt else { return false }
+        return resetsAt <= now
+    }
+
+    /// 展示 / 比较用的已用百分比：窗口已过后视为 0。
+    public func effectiveUsedPercent(now: Date = .now) -> Double {
+        hasExpired(now: now) ? 0 : usedPercent
+    }
+
+    /// 重置文案。已过期写「已重置」，绝不能把负数剩时格式化成「1 分钟后」。
+    public func resetCaption(now: Date = .now) -> String? {
+        guard let resetsAt else { return nil }
+        let remaining = resetsAt.timeIntervalSince(now)
+        if remaining > 0 { return L("%@后重置", Fmt.duration(remaining)) }
+        return L("已重置")
+    }
+
+    /// 窗口已过则把 usedPercent 归零。resetsAt 原样保留，方便 UI 判断「已重置」。
+    public func resolved(now: Date = .now) -> QuotaStatus {
+        guard hasExpired(now: now), usedPercent != 0 else { return self }
+        return QuotaStatus(
+            provider: provider, usedPercent: 0, windowMinutes: windowMinutes,
+            resetsAt: resetsAt, planType: planType, observedAt: observedAt,
+            source: source, windowLabel: windowLabel)
     }
 }

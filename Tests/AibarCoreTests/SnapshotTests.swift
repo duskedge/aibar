@@ -105,6 +105,53 @@ struct SnapshotTests {
         #expect(fresh.windowDescription == "7 天窗口")
     }
 
+    /// Codex 额度只在跑对话时写入。5 小时窗口过了之后日志不会补一条 0%，
+    /// 必须把百分比归零，并显示「已重置」而不是「1 分钟后重置」。
+    @Test("窗口已过的额度归零，不把过期剩时说成 1 分钟")
+    func expiredQuotaResetsToZero() {
+        let now = Date()
+        let five = QuotaStatus(provider: .codex, usedPercent: 12, windowMinutes: 300,
+                               resetsAt: now.addingTimeInterval(-13 * 3600), planType: "plus",
+                               observedAt: now.addingTimeInterval(-15 * 3600), source: .localLog)
+        let week = QuotaStatus(provider: .codex, usedPercent: 5, windowMinutes: 10080,
+                               resetsAt: now.addingTimeInterval(6 * 86400), planType: "plus",
+                               observedAt: now.addingTimeInterval(-15 * 3600), source: .localLog)
+        #expect(five.hasExpired(now: now))
+        #expect(!week.hasExpired(now: now))
+        #expect(five.effectiveUsedPercent(now: now) == 0)
+        #expect(week.effectiveUsedPercent(now: now) == 5)
+        #expect(five.resetCaption(now: now) == "已重置")
+        #expect(five.resolved(now: now).usedPercent == 0)
+        #expect(week.resolved(now: now).usedPercent == 5)
+
+        var s = Snapshot()
+        s.quotas = [five, week]
+        let rows = s.quotas(for: .codex)
+        #expect(rows.first { $0.windowMinutes == 300 }?.usedPercent == 0)
+        #expect(rows.first { $0.windowMinutes == 10080 }?.usedPercent == 5)
+        #expect(s.tightestQuota?.windowMinutes == 10080)
+        #expect(s.tightestQuota?.usedPercent == 5)
+    }
+
+    @Test("latestQuota 取每个窗口最新一条，过期窗口归零")
+    func latestQuotaPicksNewestThenResolves() throws {
+        let s = try UsageStore(path: ":memory:")
+        let old = QuotaStatus(provider: .codex, usedPercent: 40, windowMinutes: 300,
+                              resetsAt: .now.addingTimeInterval(-7200), planType: "plus",
+                              observedAt: .now.addingTimeInterval(-8000), source: .localLog)
+        let newest = QuotaStatus(provider: .codex, usedPercent: 12, windowMinutes: 300,
+                                 resetsAt: .now.addingTimeInterval(-100), planType: "plus",
+                                 observedAt: .now.addingTimeInterval(-200), source: .localLog)
+        try s.insert(quota: old)
+        try s.insert(quota: newest)
+        let rows = try Reports(store: s).latestQuota()
+        let five = try #require(rows.first { $0.windowMinutes == 300 })
+        #expect(five.usedPercent == 0, "12% 的窗口已经过期，应归零")
+        // 库里只存整秒，不能拿带小数的 Date 直接比
+        #expect(Int(five.observedAt.timeIntervalSince1970)
+                == Int(newest.observedAt.timeIntervalSince1970))
+    }
+
     @Test("告警阈值分级")
     func thresholdLevels() {
         let t = Thresholds(warn: 80, critical: 95)

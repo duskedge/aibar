@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import AibarCore
 
@@ -34,14 +35,18 @@ final class AppModel: ObservableObject {
     @AppStorage(SettingsKey.offlineMode) var offlineMode = false
     @AppStorage(SettingsKey.liveQuotaClaude) var liveQuotaClaude = true
     @AppStorage(SettingsKey.disclosureShown) var disclosureShown = false
+    @AppStorage(SettingsKey.autoCheckUpdates) var autoCheckUpdates = true
 
     @Published private(set) var networkLog: [NetworkGuard.LogEntry] = []
+    @Published private(set) var updateStatus: AppUpdate.Status = .idle
+    @Published private(set) var isUpdating = false
     /// 设置页点「重新查看首启说明」时置位，由 App 层监听并开窗。
     @Published var wantsDisclosure = false
     /// 已经就某个窗口提醒过，避免同一个窗口反复推送。
     private var notifiedWindows: Set<String> = []
     /// 额度接口自己的轮询。跟文件监听拆开，免得对话写日志时把接口打爆。
     private var quotaPollTask: Task<Void, Never>?
+    private var updatePollTask: Task<Void, Never>?
 
     /// 仪表盘复用同一个引擎实例，两个窗口共享一份连接与扫描状态。
     private(set) var engine: UsageEngine?
@@ -82,6 +87,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in await self?.refresh(includeLiveQuota: false) }
             }
             startQuotaPolling()
+            startUpdatePolling()
         } catch {
             phase = .failed("\(error)")
         }
@@ -190,6 +196,7 @@ final class AppModel: ObservableObject {
         Task {
             await applyNetworkSettings()
             await refresh(force: true)
+            if !offlineMode { await checkForUpdate() }
         }
     }
 
@@ -202,7 +209,7 @@ final class AppModel: ObservableObject {
     /// 越过阈值时推一次通知。同一个窗口在重置之前只提醒一次。
     private func checkQuotaAlerts() {
         guard notifyOnQuota else { return }
-        for q in snapshot.quotas + snapshot.liveQuotas {
+        for q in snapshot.allQuotas {
             let level = thresholds.level(for: q.usedPercent)
             guard level != .normal else { continue }
             // 用 (来源, 窗口, 重置时刻) 作键：窗口一重置，键就变了，可以再提醒
@@ -268,5 +275,72 @@ final class AppModel: ObservableObject {
     var menuBarTint: Provider? {
         if case .provider(let p) = menuBarTarget { return p }
         return displayedQuota?.provider
+    }
+
+    // MARK: - 应用更新
+
+    /// 正在跑的是 .app 才允许就地替换；从 `swift run` 起来的只能打开下载页。
+    var canSelfUpdate: Bool { AppInstaller.runningFromAppBundle }
+
+    var availableRelease: AppUpdate.Release? {
+        if case .available(let r) = updateStatus { return r }
+        return nil
+    }
+
+    var isCheckingUpdate: Bool {
+        if case .checking = updateStatus { return true }
+        return false
+    }
+
+    private func startUpdatePolling() {
+        updatePollTask?.cancel()
+        updatePollTask = Task { [weak self] in
+            await self?.checkForUpdate()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(AppUpdate.defaultMinInterval))
+                guard !Task.isCancelled else { break }
+                await self?.checkForUpdate()
+            }
+        }
+    }
+
+    /// 查 GitHub 上有没有更新。离线、未看过披露页、或关了自动检查时跳过。
+    /// `force` 是设置页「检查更新」—— 仍尊重离线，但不再看自动检查开关。
+    func checkForUpdate(force: Bool = false) async {
+        guard disclosureShown, !offlineMode else { return }
+        guard force || autoCheckUpdates else { return }
+        if case .available = updateStatus, !force { return }
+        updateStatus = .checking
+        do {
+            updateStatus = try await AppUpdate.check()
+        } catch {
+            // 自动检查失败保持安静：网络抖一下不该在关于页留下一条错误。
+            updateStatus = force ? .failed("\(error)") : .idle
+        }
+        networkLog = await NetworkGuard.RequestLog.shared.all()
+    }
+
+    func installAvailableUpdate() async {
+        guard let release = availableRelease else { return }
+        guard canSelfUpdate else { return }
+        isUpdating = true
+        defer { isUpdating = false }
+        do {
+            let dmg = try await AppUpdate.downloadAndVerify(release)
+            try AppInstaller.launchReplacement(
+                dmg: dmg,
+                destination: Bundle.main.bundleURL,
+                pid: ProcessInfo.processInfo.processIdentifier)
+            // 脚本在本进程退出后才会替换 .app
+            NSApplication.shared.terminate(nil)
+        } catch {
+            updateStatus = .failed("\(error)")
+            networkLog = await NetworkGuard.RequestLog.shared.all()
+        }
+    }
+
+    func openReleasePage() {
+        let url = availableRelease?.htmlURL ?? AppUpdate.releasesPageURL
+        NSWorkspace.shared.open(url)
     }
 }

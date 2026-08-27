@@ -2,7 +2,7 @@ import Foundation
 
 /// 域名白名单 + 请求审计。
 ///
-/// aibar 默认联网，所以"我们只连这三个域名"必须是**可验证的**，而不是一句承诺：
+/// aibar 默认联网，所以"我们只连白名单里的域名"必须是**可验证的**，而不是一句承诺：
 /// - 白名单是编译期常量，见 `allowedHosts`
 /// - 所有出网请求必须经由 `NetworkGuard.send`，它会在发出前校验 host
 /// - CI 有一条静态检查（scripts/check-network.sh），源码里出现
@@ -14,6 +14,11 @@ public enum NetworkGuard {
     /// 唯一允许访问的域名。改这里必须同步改 README 和首启披露页。
     public static let allowedHosts: Set<String> = [
         "api.anthropic.com",
+        // 检查 / 下载 GitHub Release。安装包地址会 302 到后面两个 host。
+        "api.github.com",
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
     ]
 
     public enum NetworkError: Error, CustomStringConvertible {
@@ -71,11 +76,12 @@ public enum NetworkGuard {
     /// 唯一的出网入口。
     ///
     /// - Parameter token: 只用于填 Authorization 头，不会被记录到任何地方。
+    ///   GitHub 更新检查不需要凭据，传 nil。
     /// - Parameter log: 记到哪个日志。默认全局那个；
     ///   测试传自己的实例，免得并行用例互相踩。
     public static func send(
         url: URL,
-        token: String,
+        token: String? = nil,
         headers: [String: String] = [:],
         timeout: TimeInterval = 10,
         log: RequestLog = .shared
@@ -90,7 +96,9 @@ public enum NetworkGuard {
 
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("aibar/\(version)", forHTTPHeaderField: "User-Agent")
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
 

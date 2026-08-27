@@ -167,21 +167,31 @@ public struct Reports {
     public func latestQuota() throws -> [QuotaStatus] {
         var out: [QuotaStatus] = []
         // 每个 (provider, 窗口) 各取最新一条 —— 5 小时和 7 天是两件事，不能合并
+        // SQLite 的 MAX(x) 配其它列时，其它列来自组内任意一行。
+        // 必须先取出每个窗口的最新 observed_at，再回表取整行。
         try store.db.query("""
-            SELECT provider, window_minutes, MAX(observed_at), used_percent,
-                   resets_at, plan_type, source, window_label
-            FROM quota_snapshots_v2
-            GROUP BY provider, window_minutes
-            ORDER BY provider, window_minutes
+            SELECT q.provider, q.window_minutes, q.observed_at, q.used_percent,
+                   q.resets_at, q.plan_type, q.source, q.window_label
+            FROM quota_snapshots_v2 q
+            JOIN (
+                SELECT provider, window_minutes, MAX(observed_at) AS observed_at
+                FROM quota_snapshots_v2
+                GROUP BY provider, window_minutes
+            ) latest
+              ON q.provider = latest.provider
+             AND q.window_minutes = latest.window_minutes
+             AND q.observed_at = latest.observed_at
+            ORDER BY q.provider, q.window_minutes
             """) { r in
             guard let p = r.text(0).flatMap(Provider.init(rawValue:)) else { return }
-            out.append(QuotaStatus(
+            let q = QuotaStatus(
                 provider: p, usedPercent: r.double(3), windowMinutes: r.int(1),
                 resetsAt: r.int(4) > 0 ? Date(timeIntervalSince1970: Double(r.int(4))) : nil,
                 planType: r.text(5),
                 observedAt: Date(timeIntervalSince1970: Double(r.int(2))),
                 source: QuotaStatus.Source(rawValue: r.text(6) ?? "") ?? .localLog,
-                windowLabel: r.text(7)))
+                windowLabel: r.text(7))
+            out.append(q.resolved())
         }
         return out
     }
