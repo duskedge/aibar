@@ -9,10 +9,10 @@ cask "aibar" do
   version "0.5.0"
   sha256 "REPLACE_WITH_DMG_SHA256"
 
-  url "https://github.com/waveblog/aibar/releases/download/v#{version}/aibar-v#{version}.dmg"
+  url "https://github.com/duskedge/aibar/releases/download/v#{version}/aibar-v#{version}.dmg"
   name "aibar"
   desc "Menu bar usage stats for Claude Code, Codex and Grok"
-  homepage "https://github.com/waveblog/aibar"
+  homepage "https://github.com/duskedge/aibar"
 
   depends_on macos: ">= :sonoma"
 

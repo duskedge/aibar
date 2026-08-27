@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/waveblog/aibar/actions/workflows/ci.yml"><img src="https://github.com/waveblog/aibar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/duskedge/aibar/actions/workflows/ci.yml"><img src="https://github.com/duskedge/aibar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-lightgrey" alt="macOS 14+">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
@@ -43,7 +43,7 @@ and *can I keep going*.
 
 ## Install
 
-Grab the DMG from [Releases](https://github.com/waveblog/aibar/releases) and drag it to
+Grab the DMG from [Releases](https://github.com/duskedge/aibar/releases) and drag it to
 Applications. Builds are currently unsigned, so clear the quarantine flag once:
 
 ```bash
@@ -92,7 +92,7 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Build
 
 ```bash
-git clone https://github.com/waveblog/aibar.git
+git clone https://github.com/duskedge/aibar.git
 cd aibar
 swift build && swift test
 ./scripts/build-app.sh && open .build/manual/aibar.app

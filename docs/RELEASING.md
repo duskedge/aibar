@@ -34,7 +34,7 @@ export TEAM_ID=XXXXXXXXXX NOTARY_APPLE_ID=you@example.com NOTARY_PASSWORD=xxxx-x
 
 ## Homebrew Cask（可选）
 
-要支持 `brew install --cask waveblog/tap/aibar`，需要另建一个名为
+要支持 `brew install --cask duskedge/tap/aibar`，需要另建一个名为
 `homebrew-tap` 的仓库，把发布时生成的 `dist/aibar.rb` 放进 `Casks/aibar.rb`。
 
 没建之前，README 只引导用户下载 DMG。

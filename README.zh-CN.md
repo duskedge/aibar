@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/waveblog/aibar/actions/workflows/ci.yml"><img src="https://github.com/waveblog/aibar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/duskedge/aibar/actions/workflows/ci.yml"><img src="https://github.com/duskedge/aibar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-lightgrey" alt="macOS 14+">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
@@ -40,7 +40,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/waveblog/aibar/releases) 下载 DMG 拖进「应用程序」。
+从 [Releases](https://github.com/duskedge/aibar/releases) 下载 DMG 拖进「应用程序」。
 目前的发布包未经签名，首次打开需要清一次隔离标记：
 
 ```bash
@@ -86,7 +86,7 @@ SQLite 句柄完全关在一个 `actor` 里，UI 侧只拿不可变的快照值�
 ## 构建
 
 ```bash
-git clone https://github.com/waveblog/aibar.git
+git clone https://github.com/duskedge/aibar.git
 cd aibar
 swift build && swift test
 ./scripts/build-app.sh && open .build/manual/aibar.app
