@@ -99,7 +99,6 @@ public enum NetworkGuard {
         if let token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.setValue("aibar/\(version)", forHTTPHeaderField: "User-Agent")
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
 
         let started = Date()
@@ -135,6 +134,13 @@ public enum NetworkGuard {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.waitsForConnectivity = false
         config.timeoutIntervalForRequest = 10
+        // GitHub 对没有 User-Agent 的请求直接 403
+        //（"Request forbidden by administrative rules"）。
+        // 必须写在 session 配置上：URLRequest.setValue 改 User-Agent
+        // 会被 CFNetwork 丢掉，发出去仍是空的。
+        config.httpAdditionalHeaders = [
+            "User-Agent": "aibar/\(version) (+https://github.com/duskedge/aibar)"
+        ]
         return URLSession(configuration: config)
     }()
 }
