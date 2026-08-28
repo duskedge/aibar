@@ -87,14 +87,28 @@ public enum MenuBarTarget: RawRepresentable, CaseIterable, Sendable, Hashable {
 }
 
 /// 一家有多个窗口时（Claude 5 小时 + 7 天、Codex 5 小时 + 7 天），菜单栏显示哪个。
+///
+/// `fiveHour` / `sevenDay` 按固定时长挑，不会被月度窗口抢走；
+/// `shortest` / `longest` 是相对的，有 30 天窗口时最长就不再是 7 天。
 public enum MenuBarWindow: String, CaseIterable, Sendable {
-    case tightest, shortest, longest
+    case tightest, fiveHour, sevenDay, shortest, longest
 
     public var label: String {
         switch self {
         case .tightest: L("用得最多的窗口")
+        case .fiveHour: L("5 小时窗口")
+        case .sevenDay: L("7 天窗口")
         case .shortest: L("最短窗口")
         case .longest: L("最长窗口")
+        }
+    }
+
+    /// 固定时长选项对应的窗口分钟数。相对选项为 nil。
+    public var pinnedMinutes: Int? {
+        switch self {
+        case .fiveHour: 300
+        case .sevenDay: 10080
+        case .tightest, .shortest, .longest: nil
         }
     }
 }

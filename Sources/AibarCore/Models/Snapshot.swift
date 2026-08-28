@@ -83,6 +83,9 @@ public struct Snapshot: Sendable {
         case .tightest: pool.max { $0.usedPercent < $1.usedPercent }
         case .shortest: pool.min { $0.windowMinutes < $1.windowMinutes }
         case .longest: pool.max { $0.windowMinutes < $1.windowMinutes }
+        case .fiveHour, .sevenDay:
+            pool.filter { $0.windowMinutes == window.pinnedMinutes }
+                .max { $0.usedPercent < $1.usedPercent }
         }
     }
     public var recentSessions: [SessionRow] = []

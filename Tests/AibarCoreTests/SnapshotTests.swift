@@ -298,6 +298,41 @@ struct MenuBarTests {
         #expect(s.quota(target: .provider(.claudeCode), window: .longest)?.usedPercent == 9)
     }
 
+    /// 最短 / 最长是相对的。有月度窗口时最长就不再是 7 天，
+    /// 所以必须能直接钉住 5 小时或 7 天。
+    @Test("可以固定显示 5 小时或 7 天窗口")
+    func pinnedFiveHourAndSevenDay() {
+        var s = snapshot()
+        s.liveQuotas.append(QuotaStatus(
+            provider: .claudeCode, usedPercent: 5, windowMinutes: 43200,
+            resetsAt: nil, planType: "pro", observedAt: .now, source: .officialAPI))
+
+        #expect(s.quota(target: .provider(.claudeCode), window: .fiveHour)?.windowMinutes == 300)
+        #expect(s.quota(target: .provider(.claudeCode), window: .fiveHour)?.usedPercent == 86)
+        #expect(s.quota(target: .provider(.claudeCode), window: .sevenDay)?.windowMinutes == 10080)
+        #expect(s.quota(target: .provider(.claudeCode), window: .sevenDay)?.usedPercent == 9)
+        #expect(s.quota(target: .provider(.claudeCode), window: .longest)?.windowMinutes == 43200)
+        #expect(s.quota(target: .provider(.claudeCode), window: .shortest)?.windowMinutes == 300)
+
+        let five = s.quota(target: .tightest, window: .fiveHour)
+        #expect(five?.provider == .claudeCode)
+        #expect(five?.windowMinutes == 300)
+
+        let week = s.quota(target: .tightest, window: .sevenDay)
+        #expect(week?.provider == .claudeCode)
+        #expect(week?.usedPercent == 9)
+
+        #expect(s.quota(target: .provider(.grok), window: .fiveHour) == nil)
+    }
+
+    @Test("MenuBarWindow 能往返编码")
+    func windowRoundTrip() {
+        for w in MenuBarWindow.allCases {
+            #expect(MenuBarWindow(rawValue: w.rawValue) == w)
+        }
+        #expect(MenuBarWindow(rawValue: "不存在") == nil)
+    }
+
     /// 选了一家没有额度来源的，不能瞎编，返回 nil 让 UI 退回显示 token。
     @Test("没有额度来源的一家返回 nil")
     func providerWithoutQuota() {
