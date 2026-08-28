@@ -16,7 +16,7 @@
 aibar 默认会发出两类请求，都只走编译期白名单：
 
 - `api.anthropic.com` 查询 Claude 的实时剩余额度（读取本机 Keychain 里的登录凭据）
-- `api.github.com` / `github.com` 检查是否有新版本并下载 DMG（不带任何凭据）
+- `github.com` 检查是否有新版本并下载 DMG（不带任何凭据）
 
 Codex 与 Grok 的额度本地日志里就有，不发请求。自动检查更新可在设置里单独关掉。
 

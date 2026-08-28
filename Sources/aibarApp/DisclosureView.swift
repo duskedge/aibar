@@ -104,7 +104,7 @@ struct DisclosureView: View {
                 Text("启动后会向 GitHub 查询是否有新版本。发现更新后可以在面板里一键下载并替换当前应用。这条请求**不携带任何凭据**，可在设置里关掉自动检查。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("api.github.com / github.com")
+                Text("github.com")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(.secondary)
             }

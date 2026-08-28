@@ -15,7 +15,6 @@ public enum NetworkGuard {
     public static let allowedHosts: Set<String> = [
         "api.anthropic.com",
         // 检查 / 下载 GitHub Release。安装包地址会 302 到后面两个 host。
-        "api.github.com",
         "github.com",
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",

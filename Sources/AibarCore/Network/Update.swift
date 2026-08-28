@@ -4,15 +4,16 @@ import Foundation
 /// 从 GitHub Release 检查 / 下载新版本。
 ///
 /// 不引入 Sparkle：零第三方依赖是这个项目的产品承诺。
-/// 元数据走 `api.github.com`，安装包走 `github.com`（会 302 到 githubusercontent）。
+/// 元数据走 `github.com` 的 Atom 订阅，安装包走同一域名（会 302 到 githubusercontent）。
+/// 不打 `api.github.com`：未登录 REST 限额是每 IP 每小时 60 次，共享出口很容易 403。
 /// 都不带凭据，离线模式下一律短路。
 public enum AppUpdate {
     public static let owner = "duskedge"
     public static let repo = "aibar"
     public static let defaultMinInterval: TimeInterval = 86_400
 
-    public static var latestReleaseURL: URL {
-        URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+    public static var latestFeedURL: URL {
+        URL(string: "https://github.com/\(owner)/\(repo)/releases.atom")!
     }
 
     public static var releasesPageURL: URL {
@@ -65,39 +66,55 @@ public enum AppUpdate {
         compare(candidate, current) == .orderedDescending
     }
 
-    /// GitHub `releases/latest` 的 JSON。草稿和预发布 GitHub 自己会跳过。
-    public static func parseRelease(_ data: Data) throws -> Release {
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw NetworkGuard.NetworkError.badResponse("Release 响应不是对象")
-        }
-        if root["draft"] as? Bool == true || root["prerelease"] as? Bool == true {
-            throw NetworkGuard.NetworkError.badResponse("最新 Release 是草稿或预发布")
-        }
-        let tag = (root["tag_name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
-        guard !tag.isEmpty else {
-            throw NetworkGuard.NetworkError.badResponse("Release 没有 tag_name")
-        }
-        let assets = root["assets"] as? [[String: Any]] ?? []
-        func asset(_ pred: (String) -> Bool) -> URL? {
-            for item in assets {
-                guard let name = item["name"] as? String, pred(name),
-                      let raw = item["browser_download_url"] as? String,
-                      let url = URL(string: raw) else { continue }
-                return url
-            }
-            return nil
-        }
-        guard let dmg = asset({ $0.hasSuffix(".dmg") && !$0.hasSuffix(".sha256") }) else {
-            throw NetworkGuard.NetworkError.badResponse("Release 里没有 DMG")
-        }
-        let version = tag.hasPrefix("v") || tag.hasPrefix("V") ? String(tag.dropFirst()) : tag
+    /// 按仓库现有发布约定拼下载地址：`aibar-<tag>.dmg` / `.dmg.sha256`。
+    public static func release(for tag: String, notes: String = "") -> Release {
+        let tag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let version = (tag.first == "v" || tag.first == "V") ? String(tag.dropFirst()) : tag
+        let base = "https://github.com/\(owner)/\(repo)/releases"
         return Release(
             version: version,
             tag: tag,
-            notes: root["body"] as? String ?? "",
-            dmgURL: dmg,
-            sha256URL: asset { $0.hasSuffix(".dmg.sha256") || $0.hasSuffix(".sha256") },
-            htmlURL: (root["html_url"] as? String).flatMap(URL.init(string:)))
+            notes: notes,
+            dmgURL: URL(string: "\(base)/download/\(tag)/aibar-\(tag).dmg")!,
+            sha256URL: URL(string: "\(base)/download/\(tag)/aibar-\(tag).dmg.sha256"),
+            htmlURL: URL(string: "\(base)/tag/\(tag)"))
+    }
+
+    /// GitHub 的 `releases.atom`。草稿不进订阅；取第一条 entry 即最新发布。
+    public static func parseAtom(_ data: Data) throws -> Release {
+        guard let xml = String(data: data, encoding: .utf8) else {
+            throw NetworkGuard.NetworkError.badResponse("Release 订阅不是文本")
+        }
+        guard let start = xml.range(of: "<entry"),
+              let end = xml.range(of: "</entry>", range: start.upperBound..<xml.endIndex)
+        else {
+            throw NetworkGuard.NetworkError.badResponse("订阅里没有 Release")
+        }
+        let entry = xml[start.upperBound..<end.lowerBound]
+        guard let tag = tag(fromAtomEntry: String(entry)) else {
+            throw NetworkGuard.NetworkError.badResponse("Release 没有 tag")
+        }
+        return release(for: tag)
+    }
+
+    /// 优先从 `/releases/tag/<tag>` 链里取，避免用到 feed 级 `<title>`。
+    static func tag(fromAtomEntry entry: String) -> String? {
+        let marker = "/releases/tag/"
+        if let range = entry.range(of: marker) {
+            let rest = entry[range.upperBound...]
+            let tag = rest.prefix(while: { ch in
+                ch != "\"" && ch != "'" && ch != "<" && ch != ">" && !ch.isWhitespace
+            })
+            if !tag.isEmpty { return String(tag) }
+        }
+        if let t0 = entry.range(of: "<title"),
+           let gt = entry[t0.upperBound...].firstIndex(of: ">"),
+           let t1 = entry.range(of: "</title>", range: gt..<entry.endIndex) {
+            let title = entry[entry.index(after: gt)..<t1.lowerBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        return nil
     }
 
     public static func parseSHA256(_ text: String) -> String? {
@@ -123,13 +140,10 @@ public enum AppUpdate {
             data = try await fetch()
         } else {
             data = try await NetworkGuard.send(
-                url: latestReleaseURL,
-                headers: [
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                ])
+                url: latestFeedURL,
+                headers: ["Accept": "application/atom+xml"])
         }
-        let release = try parseRelease(data)
+        let release = try parseAtom(data)
         return isNewer(release.version, than: current)
             ? .available(release)
             : .upToDate

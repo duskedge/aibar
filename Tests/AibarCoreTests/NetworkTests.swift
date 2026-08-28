@@ -12,7 +12,6 @@ struct NetworkTests {
     func allowlistIsMinimal() {
         #expect(NetworkGuard.allowedHosts == [
             "api.anthropic.com",
-            "api.github.com",
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
@@ -322,22 +321,26 @@ struct NetworkTests {
 @Suite("GitHub 更新检查")
 struct UpdateTests {
 
-    func fixture(tag: String = "v0.9.0",
-                 prerelease: Bool = false,
-                 dmg: String? = "https://github.com/duskedge/aibar/releases/download/v0.9.0/aibar-v0.9.0.dmg",
-                 sha: String? = "https://github.com/duskedge/aibar/releases/download/v0.9.0/aibar-v0.9.0.dmg.sha256") -> Data {
-        var assets: [[String: String]] = []
-        if let dmg { assets.append(["name": "aibar-\(tag).dmg", "browser_download_url": dmg]) }
-        if let sha { assets.append(["name": "aibar-\(tag).dmg.sha256", "browser_download_url": sha]) }
-        let payload: [String: Any] = [
-            "tag_name": tag,
-            "draft": false,
-            "prerelease": prerelease,
-            "body": "fixes",
-            "html_url": "https://github.com/duskedge/aibar/releases/tag/\(tag)",
-            "assets": assets,
-        ]
-        return try! JSONSerialization.data(withJSONObject: payload)
+    func atom(tag: String = "v0.9.0", includeEntry: Bool = true) -> Data {
+        var xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>Release notes from aibar</title>
+        """
+        if includeEntry {
+            xml += """
+              <entry>
+                <title>\(tag)</title>
+                <link rel="alternate" type="text/html" href="https://github.com/duskedge/aibar/releases/tag/\(tag)"/>
+              </entry>
+              <entry>
+                <title>v0.1.0</title>
+                <link rel="alternate" href="https://github.com/duskedge/aibar/releases/tag/v0.1.0"/>
+              </entry>
+            """
+        }
+        xml += "</feed>"
+        return Data(xml.utf8)
     }
 
     @Test("版本比较认 semver，忽略 v 前缀")
@@ -349,31 +352,32 @@ struct UpdateTests {
         #expect(AppUpdate.compare("1.0.0", "1.0") == .orderedSame)
     }
 
-    @Test("解析 GitHub latest Release")
-    func parseRelease() throws {
-        let r = try AppUpdate.parseRelease(fixture())
+    @Test("解析 GitHub Atom 取第一条 Release，不用 feed 标题")
+    func parseAtom() throws {
+        let r = try AppUpdate.parseAtom(atom())
         #expect(r.version == "0.9.0")
         #expect(r.tag == "v0.9.0")
-        #expect(r.dmgURL.path.hasSuffix(".dmg"))
-        #expect(r.sha256URL != nil)
+        #expect(r.dmgURL.absoluteString.hasSuffix("/aibar-v0.9.0.dmg"))
+        #expect(r.sha256URL?.absoluteString.hasSuffix("/aibar-v0.9.0.dmg.sha256") == true)
+        #expect(r.htmlURL?.absoluteString.hasSuffix("/releases/tag/v0.9.0") == true)
     }
 
-    @Test("没有 DMG 时报错")
-    func missingDMG() {
+    @Test("订阅里没有 Release 时报错")
+    func emptyFeed() {
         #expect(throws: NetworkGuard.NetworkError.self) {
-            _ = try AppUpdate.parseRelease(fixture(dmg: nil, sha: nil))
+            _ = try AppUpdate.parseAtom(atom(includeEntry: false))
         }
     }
 
     @Test("当前版本不低于 latest 时判定为已最新")
     func checkUpToDate() async throws {
-        let status = try await AppUpdate.check(current: "0.9.0", fetch: { self.fixture(tag: "v0.9.0") })
+        let status = try await AppUpdate.check(current: "0.9.0", fetch: { self.atom(tag: "v0.9.0") })
         #expect(status == .upToDate)
     }
 
     @Test("latest 更高时给出可更新")
     func checkAvailable() async throws {
-        let status = try await AppUpdate.check(current: "0.5.1", fetch: { self.fixture(tag: "v0.9.0") })
+        let status = try await AppUpdate.check(current: "0.5.1", fetch: { self.atom(tag: "v0.9.0") })
         guard case .available(let r) = status else {
             Issue.record("应得到 available，实际 \(status)")
             return
@@ -391,7 +395,7 @@ struct UpdateTests {
 
     @Test("下载后校验失败则拒绝安装")
     func verifyRejectsMismatch() async {
-        let release = try! AppUpdate.parseRelease(fixture())
+        let release = AppUpdate.release(for: "v0.9.0")
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("aibar-update-test-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -410,7 +414,7 @@ struct UpdateTests {
     func verifyAcceptsMatch() async throws {
         let payload = Data("dmg-bytes".utf8)
         let hex = AppUpdate.sha256(of: payload)
-        let release = try AppUpdate.parseRelease(fixture())
+        let release = AppUpdate.release(for: "v0.9.0")
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("aibar-update-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

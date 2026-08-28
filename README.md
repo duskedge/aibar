@@ -66,8 +66,7 @@ Usage analysis is **100% local**. The only network requests aibar ever makes are
 
 - `api.anthropic.com` for your live Claude quota, using the credentials Claude Code
   already stored on your Mac
-- `api.github.com` / `github.com` to check for a new release and download the DMG
-  (no credentials)
+- `github.com` to check for a new release and download the DMG (no credentials)
 
 That allowlist is a compile-time constant enforced by CI — any other host in the source
 fails the build. Settings → Network Activity lists every request this run made, with

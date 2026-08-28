@@ -62,7 +62,7 @@ aibar 要读 `~/.claude`、`~/.codex`、`~/.grok`，这些路径在 App Sandbox 
 用量分析**全部在本地**。aibar 会发出的网络请求只有：
 
 - `api.anthropic.com` 查询你的 Claude 实时额度，用的是 Claude Code 早已存在你 Mac 上的凭据
-- `api.github.com` / `github.com` 检查是否有新版本并下载 DMG（不带任何凭据）
+- `github.com` 检查是否有新版本并下载 DMG（不带任何凭据）
 
 这个白名单是编译期常量，由 CI 强制 —— 源码里出现任何其他域名，构建直接失败。
 设置 → 网络活动会列出本次运行发出的每一个请求，带时间戳和状态码。

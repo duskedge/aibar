@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ALLOWED='api\.anthropic\.com|api\.github\.com'
+ALLOWED='api\.anthropic\.com'
 FAIL=0
 
 # 1) 源码里出现的所有 https:// URL，除白名单外一律不允许
