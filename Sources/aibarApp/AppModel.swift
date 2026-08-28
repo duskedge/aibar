@@ -34,6 +34,9 @@ final class AppModel: ObservableObject {
     /// 默认 false = 默认联网。改这个默认值等于改变产品承诺，动之前先看 README。
     @AppStorage(SettingsKey.offlineMode) var offlineMode = false
     @AppStorage(SettingsKey.liveQuotaClaude) var liveQuotaClaude = true
+    @AppStorage(SettingsKey.providerEnabledClaude) var providerEnabledClaude = true
+    @AppStorage(SettingsKey.providerEnabledCodex) var providerEnabledCodex = true
+    @AppStorage(SettingsKey.providerEnabledGrok) var providerEnabledGrok = true
     @AppStorage(SettingsKey.disclosureShown) var disclosureShown = false
     @AppStorage(SettingsKey.autoCheckUpdates) var autoCheckUpdates = true
 
@@ -71,6 +74,7 @@ final class AppModel: ObservableObject {
             let engine = try UsageEngine()
             self.engine = engine
             await engine.configure(budgets: budgets)
+            await engine.configureEnabledProviders(enabledProviders)
             await applyNetworkSettings()
 
             // 冷启动先把已有数据显示出来，不让用户对着空面板等全量扫描
@@ -170,7 +174,7 @@ final class AppModel: ObservableObject {
     func applyNetworkSettings() async {
         guard let engine else { return }
         var enabled: Set<Provider> = []
-        if liveQuotaClaude { enabled.insert(.claudeCode) }
+        if liveQuotaClaude && providerEnabledClaude { enabled.insert(.claudeCode) }
         await engine.configureLiveQuota(.init(
             offline: offlineMode || !disclosureShown,
             enabled: enabled,
@@ -189,6 +193,41 @@ final class AppModel: ObservableObject {
                 await self?.refresh(includeLiveQuota: true)
             }
         }
+    }
+
+    /// 当前启用的数据源，顺序与 `Provider.allCases` 一致。
+    var enabledProviders: Set<Provider> {
+        var s = Set<Provider>()
+        if providerEnabledClaude { s.insert(.claudeCode) }
+        if providerEnabledCodex { s.insert(.codex) }
+        if providerEnabledGrok { s.insert(.grok) }
+        return s
+    }
+
+    func isProviderEnabled(_ provider: Provider) -> Bool {
+        switch provider {
+        case .claudeCode: providerEnabledClaude
+        case .codex: providerEnabledCodex
+        case .grok: providerEnabledGrok
+        }
+    }
+
+    func setProvider(_ provider: Provider, enabled: Bool) {
+        switch provider {
+        case .claudeCode: providerEnabledClaude = enabled
+        case .codex: providerEnabledCodex = enabled
+        case .grok: providerEnabledGrok = enabled
+        }
+        Task { await applyProviderSettings() }
+    }
+
+    /// 把数据源开关同步给引擎：停扫、停接口、重挂目录监听，再刷一版不含关掉那家的快照。
+    func applyProviderSettings() async {
+        guard let engine else { return }
+        await engine.configureEnabledProviders(enabledProviders)
+        await applyNetworkSettings()
+        await engine.restartWatching()
+        await refresh(force: true)
     }
 
     func toggleOffline() {
@@ -225,7 +264,11 @@ final class AppModel: ObservableObject {
     /// 取三家里最紧张的一家。M2 只有 Codex 从本地日志拿得到额度，
     /// Claude / Grok 需要 L2 接口层（M4）。
     var menuBarTarget: MenuBarTarget {
-        get { MenuBarTarget(rawValue: menuBarTargetRaw) ?? .tightest }
+        get {
+            let t = MenuBarTarget(rawValue: menuBarTargetRaw) ?? .tightest
+            if case .provider(let p) = t, !isProviderEnabled(p) { return .tightest }
+            return t
+        }
         set { menuBarTargetRaw = newValue.rawValue }
     }
 

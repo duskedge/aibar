@@ -29,11 +29,15 @@ public final class Scanner {
     }
 
     /// 全量 / 增量扫描。已扫过且 size 与 inode 都没变的文件直接跳过。
-    public func scan(onProgress: ((Progress) -> Void)? = nil) throws -> Summary {
+    ///
+    /// `enabled` 为 nil 时扫全部；为空集合时一家都不扫。
+    public func scan(enabled: Set<Provider>? = nil,
+                     onProgress: ((Progress) -> Void)? = nil) throws -> Summary {
         let started = Date()
         var summary = Summary()
 
-        for provider in providers {
+        let active = providers.filter { enabled?.contains($0.provider) ?? true }
+        for provider in active {
             let files = provider.discoverFiles()
             var done = 0
             for file in files {

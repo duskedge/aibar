@@ -47,6 +47,17 @@ struct DashboardTests {
         #expect(d.totals.tokens == 1000)
     }
 
+    @Test("仪表盘合计不含关掉的 provider")
+    func dashboardHonorsProviderFilter() throws {
+        let s = try store([
+            event(.claudeCode, "claude-opus-5", input: 1000, minutesAgo: 10, id: "c"),
+            event(.codex, "gpt-5.6", input: 2000, minutesAgo: 10, id: "x"),
+        ])
+        let d = try Reports(store: s).dashboard(range: .month, providers: [.claudeCode])
+        #expect(d.totals.tokens == 1000)
+        #expect(d.byProvider.map(\.key) == ["claude"])
+    }
+
     @Test("历史足够时给出环比")
     func comparisonWithHistory() throws {
         let cal = Calendar.current

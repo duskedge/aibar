@@ -34,6 +34,7 @@ final class DashboardModel: ObservableObject {
     @Published var tab: Tab = .overview
     @Published var range: DateRange = .week
     @Published var metric: Metric = .tokens
+    @Published var enabledProviders: [Provider] = Provider.allCases
     @Published var providerFilter: Provider?
     @Published var search = ""
     @Published var selectedSession: SessionDetail?

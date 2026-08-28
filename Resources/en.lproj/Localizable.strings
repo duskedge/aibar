@@ -160,6 +160,16 @@
 "读取本地会话日志" = "Read local session logs";
 "查询实时剩余额度" = "Query live remaining quota";
 "这一层不可关闭 —— 它就是 aibar 本身。" = "This layer can't be turned off — it is aibar.";
+"可以在设置 → 数据源里关掉某一家。关掉后停止读取、停止接口查询，面板也不再显示这家的数据。" = "You can turn a provider off in Settings → Data sources. That stops reading its logs, stops its API calls, and hides it from the panel.";
+"关掉某一家后：停止读取它的本地日志、停止对应的接口查询，面板和菜单栏也不再显示它的数据。已入库的记录还在，重新打开会继续用。" = "Turning a provider off stops reading its local logs, stops its API queries, and hides it from the panel and menu bar. Records already in the database stay; turning it back on picks them up again.";
+"已关闭" = "Off";
+"自动显示已启用来源里用量最高的一条 —— 常驻图标该主动告诉你哪里快撑不住了。" = "Automatically shows the highest-usage source that's still on — the menu bar icon should tell you what's about to run out.";
+"显示已启用来源里最紧张的一家。目前只有 Codex 在本地日志中回传官方额度；Claude 与 Grok 需要官方接口查询（计划于 M4）。" = "Shows the tightest source that's still on. Only Codex currently reports official quota in its local log; Claude and Grok need the official API (planned for M4).";
+"今日已启用数据源的 token 合计。" = "Today's token total across enabled sources.";
+"会清空整个索引，然后只重新扫描还开着的数据源。关掉的那家重新打开后会再扫回来。" = "Clears the whole index, then rescan only the sources that are still on. A turned-off source is picked up again when you re-enable it.";
+"Claude Code 数据源已关闭，接口也不会再查。" = "The Claude Code source is off, so the API is not queried either.";
+"所有数据源已关闭" = "All data sources are off";
+"在设置 → 数据源里打开至少一家，才会读取日志、查询接口并显示数据" = "Turn on at least one source in Settings → Data sources to read logs, query APIs, and show data";
 "保持开启" = "Keep it on";
 "切换到离线模式" = "Switch to offline mode";
 "随时可在菜单栏面板顶部一键切换，不会丢失任何已有数据。" = "You can flip this any time from the top of the menu bar panel. Nothing you've collected is lost.";

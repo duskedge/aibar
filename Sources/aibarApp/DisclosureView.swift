@@ -52,8 +52,9 @@ struct DisclosureView: View {
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
-                Text("这一层不可关闭 —— 它就是 aibar 本身。")
+                Text("可以在设置 → 数据源里关掉某一家。关掉后停止读取、停止接口查询，面板也不再显示这家的数据。")
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

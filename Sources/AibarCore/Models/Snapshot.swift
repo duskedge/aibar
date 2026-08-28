@@ -90,6 +90,8 @@ public struct Snapshot: Sendable {
     public var dailySeries: [DayPoint] = []
     public var unpricedModels: [String] = []
     public var unpricedTokens: Int = 0
+    /// 当前启用的数据源。关掉的不进 `todayByProvider`，面板按这个列表画。
+    public var enabledProviders: [Provider] = Provider.allCases
     public var isEmpty: Bool { today.events == 0 && dailySeries.allSatisfy { $0.total == 0 } }
 
     public init() {}

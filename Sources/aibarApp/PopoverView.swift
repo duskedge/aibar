@@ -23,7 +23,9 @@ struct PopoverView: View {
             case .failed(let message):
                 failure(message)
             case .ready:
-                if model.snapshot.isEmpty { empty } else { content }
+                if model.enabledProviders.isEmpty { sourcesOff }
+                else if model.snapshot.isEmpty { empty }
+                else { content }
             }
 
             Divider()
@@ -269,7 +271,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 11) {
             SectionLabel(text: "订阅额度",
                          trailing: model.snapshot.liveFetchedAt.map { Fmt.relative($0) })
-            ForEach(Provider.allCases, id: \.self) { provider in
+            ForEach(model.snapshot.enabledProviders, id: \.self) { provider in
                 let rows = model.snapshot.quotas(for: provider)
                 if rows.isEmpty {
                     unavailableRow(provider)
@@ -484,6 +486,17 @@ struct PopoverView: View {
             Image(systemName: "tray").font(.system(size: 22)).foregroundStyle(.tertiary)
             Text("还没有用量数据").font(.system(size: 12, weight: .medium))
             Text("跑一次 Claude Code、Codex 或 Grok 之后会自动出现")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 34).padding(.horizontal, 24)
+    }
+
+    private var sourcesOff: some View {
+        VStack(spacing: 7) {
+            Image(systemName: "internaldrive").font(.system(size: 22)).foregroundStyle(.tertiary)
+            Text("所有数据源已关闭").font(.system(size: 12, weight: .medium))
+            Text("在设置 → 数据源里打开至少一家，才会读取日志、查询接口并显示数据")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }

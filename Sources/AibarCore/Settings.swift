@@ -23,6 +23,10 @@ public enum SettingsKey {
     public static let offlineMode = "offlineMode"
     /// 逐家 L2 开关。
     public static let liveQuotaClaude = "liveQuota.claude"
+    /// 逐家数据源开关。关掉后停止扫描、停止接口查询，面板也不再显示这家。
+    public static let providerEnabledClaude = "provider.enabled.claude"
+    public static let providerEnabledCodex = "provider.enabled.codex"
+    public static let providerEnabledGrok = "provider.enabled.grok"
     /// 首启披露页是否已展示过。
     public static let disclosureShown = "disclosureShown"
     public static let menuBarTarget = "menuBarTarget"

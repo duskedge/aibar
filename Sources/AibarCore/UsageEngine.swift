@@ -13,6 +13,9 @@ public actor UsageEngine {
     private var scanning = false
     private var lastRefresh = Date.distantPast
     private var budgets: [Budget] = []
+    /// 当前启用的数据源。关掉的不扫描、不监听、快照里也不出现。
+    private var enabledProviders: Set<Provider> = Set(Provider.allCases)
+    private var watchHandler: (@Sendable () -> Void)?
     /// 两次刷新之间的最小间隔。
     ///
     /// 用户正在跑对话时，CLI 是持续写日志的，FSEvents 会一直触发。
@@ -32,6 +35,10 @@ public actor UsageEngine {
 
     public func configure(budgets: [Budget]) { self.budgets = budgets }
 
+    public func configureEnabledProviders(_ enabled: Set<Provider>) {
+        self.enabledProviders = enabled
+    }
+
     public func configureLiveQuota(_ config: LiveQuotaService.Config) async {
         await liveQuota.update(config: config)
     }
@@ -44,7 +51,9 @@ public actor UsageEngine {
         return live
     }
 
-    public var watchedPaths: [URL] { scanner.providers.flatMap(\.rootPaths) }
+    public var watchedPaths: [URL] {
+        scanner.providers.filter { enabledProviders.contains($0.provider) }.flatMap(\.rootPaths)
+    }
     /// 上次真正执行扫描的时刻（被节流跳过的调用不更新它）。
     public var lastRefreshedAt: Date { lastRefresh }
 
@@ -65,38 +74,53 @@ public actor UsageEngine {
         }
         scanning = true
         defer { scanning = false; lastRefresh = .now }
-        _ = try scanner.scan()
+        _ = try scanner.scan(enabled: enabledProviders)
         return try await snapshot()
     }
 
     public func snapshot() async throws -> Snapshot {
-        var snap = try reports.snapshot(budgets: budgets)
+        let shown = Provider.allCases.filter { enabledProviders.contains($0) }
+        var snap = try reports.snapshot(budgets: budgets, providers: shown)
         let live = await liveQuota.current()
-        snap.liveQuotas = live.quotas
-        snap.quotaFailures = live.failures
+        snap.liveQuotas = live.quotas.filter { enabledProviders.contains($0.provider) }
+        snap.quotaFailures = live.failures.filter { enabledProviders.contains($0.key) }
         snap.liveFetchedAt = live.fetchedAt
         snap.quotaBackoffUntil = live.backingOffUntil
         return snap
     }
 
     public func dashboard(range: DateRange) throws -> DashboardData {
-        try reports.dashboard(range: range)
+        try reports.dashboard(range: range, providers: Provider.allCases.filter { enabledProviders.contains($0) })
     }
 
     public func sessions(range: DateRange, provider: Provider?, search: String?) throws -> [SessionDetail] {
-        try reports.sessions(range: range, provider: provider, search: search)
+        if let provider {
+            guard enabledProviders.contains(provider) else { return [] }
+            return try reports.sessions(range: range, provider: provider, search: search)
+        }
+        return try reports.sessions(range: range, provider: nil, search: search,
+                                    providers: Provider.allCases.filter { enabledProviders.contains($0) })
     }
 
     public func timeline(sessionId: String, provider: Provider) throws -> [TurnPoint] {
         try reports.timeline(sessionId: sessionId, provider: provider)
     }
 
-    public func scanSummary() throws -> Scanner.Summary { try scanner.scan() }
+    public func scanSummary() throws -> Scanner.Summary { try scanner.scan(enabled: enabledProviders) }
 
-    /// 监听三家的数据目录。FSEvents 自带 latency 合并，这里不再另做去抖。
+    /// 监听已启用数据源的目录。FSEvents 自带 latency 合并，这里不再另做去抖。
     public func startWatching(onChange: @escaping @Sendable () -> Void) {
-        guard watcher == nil else { return }
-        watcher = FileWatcher(paths: watchedPaths, latency: 2.0, handler: onChange)
+        watchHandler = onChange
+        restartWatching()
+    }
+
+    /// 数据源开关变化后重挂监听，只盯还开着的目录。
+    public func restartWatching() {
+        stopWatching()
+        guard let watchHandler else { return }
+        let paths = watchedPaths
+        guard !paths.isEmpty else { return }
+        watcher = FileWatcher(paths: paths, latency: 2.0, handler: watchHandler)
     }
 
     public func stopWatching() {

@@ -50,9 +50,14 @@ public struct Reports {
             var binds: [Database.Value] = []
             if let since { parts.append("ts >= ?"); binds.append(.int(Int(since.timeIntervalSince1970))) }
             if let until { parts.append("ts < ?"); binds.append(.int(Int(until.timeIntervalSince1970))) }
-            if let providers, !providers.isEmpty {
-                parts.append("provider IN (\(providers.map { _ in "?" }.joined(separator: ",")))")
-                binds.append(contentsOf: providers.map { .text($0.rawValue) })
+            if let providers {
+                if providers.isEmpty {
+                    // 空集合表示一家都不看，不能当成「不限」——否则关掉全部数据源还会把库里的数画出来。
+                    parts.append("1=0")
+                } else {
+                    parts.append("provider IN (\(providers.map { _ in "?" }.joined(separator: ",")))")
+                    binds.append(contentsOf: providers.map { .text($0.rawValue) })
+                }
             }
             return (parts.isEmpty ? "1=1" : parts.joined(separator: " AND "), binds)
         }
@@ -133,9 +138,10 @@ public struct Reports {
     }
 
     /// 预算进度。用等价 API 成本对着用户自设的上限算。
-    public func budgetProgress(_ budgets: [Budget]) throws -> [BudgetProgress] {
+    public func budgetProgress(_ budgets: [Budget], providers: [Provider]? = nil) throws -> [BudgetProgress] {
         var out: [BudgetProgress] = []
         for budget in budgets where budget.isConfigured {
+            if let providers, !providers.contains(budget.provider) { continue }
             let filter = Filter(since: budget.window.since, providers: [budget.provider])
             let t = try totals(filter: filter)
             let unpriced = try unpricedVolume(filter: filter)
@@ -147,24 +153,26 @@ public struct Reports {
     }
 
     /// 库里最早一条事件的时间。用来判断某个对比区间是否真的有数据覆盖。
-    public func earliestEvent() throws -> Date? {
+    public func earliestEvent(filter: Filter = Filter()) throws -> Date? {
+        let (whereSQL, binds) = filter.whereClause
         var out: Date?
-        try store.db.query("SELECT MIN(ts) FROM usage_events") { r in
+        try store.db.query("SELECT MIN(ts) FROM usage_events WHERE \(whereSQL)", binds) { r in
             if r.int(0) > 0 { out = Date(timeIntervalSince1970: Double(r.int(0))) }
         }
         return out
     }
 
     /// 库里出现过的所有模型，用来检查价格表覆盖情况。
-    public func models() throws -> [String] {
+    public func models(filter: Filter = Filter()) throws -> [String] {
+        let (whereSQL, binds) = filter.whereClause
         var out: [String] = []
-        try store.db.query("SELECT DISTINCT model FROM usage_events") { r in
+        try store.db.query("SELECT DISTINCT model FROM usage_events WHERE \(whereSQL)", binds) { r in
             if let m = r.text(0) { out.append(m) }
         }
         return out
     }
 
-    public func latestQuota() throws -> [QuotaStatus] {
+    public func latestQuota(providers: [Provider]? = nil) throws -> [QuotaStatus] {
         var out: [QuotaStatus] = []
         // 每个 (provider, 窗口) 各取最新一条 —— 5 小时和 7 天是两件事，不能合并
         // SQLite 的 MAX(x) 配其它列时，其它列来自组内任意一行。
@@ -193,6 +201,7 @@ public struct Reports {
                 windowLabel: r.text(7))
             out.append(q.resolved())
         }
+        if let providers { out.removeAll { !providers.contains($0.provider) } }
         return out
     }
 
@@ -245,40 +254,37 @@ public struct Reports {
     }
 
     /// 按天的堆叠序列。空缺的日期补零，图表才不会把两天挤在一起。
-    public func dailySeries(days: Int = 14) throws -> [Snapshot.DayPoint] {
+    public func dailySeries(days: Int = 14, providers: [Provider]? = nil) throws -> [Snapshot.DayPoint] {
         let cal = Calendar.current
         let today = cal.startOfDay(for: .now)
         guard let from = cal.date(byAdding: .day, value: -(days - 1), to: today) else { return [] }
-        return try dailySeries(from: from, days: days)
+        return try dailySeries(from: from, days: days, providers: providers)
     }
 
     /// 全部时间用这个：起点取库里最早一条，天数由跨度决定，上限防止图表点数爆炸。
-    public func dailySeriesAll(maxDays: Int = 180) throws -> [Snapshot.DayPoint] {
-        var earliest: Date?
-        try store.db.query("SELECT MIN(ts) FROM usage_events") { r in
-            if r.int(0) > 0 { earliest = Date(timeIntervalSince1970: Double(r.int(0))) }
-        }
-        guard let earliest else { return [] }
+    public func dailySeriesAll(maxDays: Int = 180, providers: [Provider]? = nil) throws -> [Snapshot.DayPoint] {
+        guard let earliest = try earliestEvent(filter: Filter(providers: providers)) else { return [] }
         let cal = Calendar.current
         let start = cal.startOfDay(for: earliest)
         let span = (cal.dateComponents([.day], from: start, to: .now).day ?? 0) + 1
         let days = min(maxDays, max(1, span))
         guard let from = cal.date(byAdding: .day, value: -(days - 1),
                                   to: cal.startOfDay(for: .now)) else { return [] }
-        return try dailySeries(from: from, days: days)
+        return try dailySeries(from: from, days: days, providers: providers)
     }
 
-    private func dailySeries(from: Date, days: Int) throws -> [Snapshot.DayPoint] {
+    private func dailySeries(from: Date, days: Int, providers: [Provider]? = nil) throws -> [Snapshot.DayPoint] {
         let cal = Calendar.current
+        let (whereSQL, binds) = Filter(since: from, providers: providers).whereClause
 
         var table: [Date: [Provider: Int]] = [:]
         try store.db.query("""
             SELECT date(ts, 'unixepoch', 'localtime'), provider,
                    SUM(input_tokens + output_tokens + cache_read_tokens
                        + cache_write_5m_tokens + cache_write_1h_tokens)
-            FROM usage_events WHERE ts >= ?
+            FROM usage_events WHERE \(whereSQL)
             GROUP BY 1, 2
-            """, [.int(Int(from.timeIntervalSince1970))]) { r in
+            """, binds) { r in
             guard let dayString = r.text(0),
                   let p = r.text(1).flatMap(Provider.init(rawValue:)),
                   let day = Self.dayFormatter.date(from: dayString) else { return }
@@ -295,33 +301,35 @@ public struct Reports {
 
     /// 组装仪表盘一次渲染所需的全部数据。
     /// 和 snapshot() 一样，一次查完交出去，UI 侧不再碰数据库。
-    public func dashboard(range: DateRange) throws -> DashboardData {
+    public func dashboard(range: DateRange, providers: [Provider]? = nil) throws -> DashboardData {
         var d = DashboardData()
         d.range = range
-        d.totals = try totals(filter: range.filter)
+        var filter = range.filter
+        if let providers { filter.providers = providers }
+        d.totals = try totals(filter: filter)
 
         // 环比：取等长的上一个区间。
         // 只有当库里的数据真的覆盖到那个区间时才算 —— 否则拿有数据的一段去比空白，
         // 会得出"▲5728%"这种没有信息量的数字。
         if let since = range.since, let days = range.dayCount,
            let prevStart = Calendar.current.date(byAdding: .day, value: -days, to: since),
-           let earliest = try earliestEvent(), earliest <= prevStart {
-            d.previousTotals = try totals(filter: Filter(since: prevStart, until: since))
+           let earliest = try earliestEvent(filter: Filter(providers: providers)), earliest <= prevStart {
+            d.previousTotals = try totals(filter: Filter(since: prevStart, until: since, providers: providers))
             d.hasComparison = true
         }
 
         d.series = try range == .all
-            ? dailySeriesAll()
-            : dailySeries(days: max(1, range.dayCount ?? 7))
+            ? dailySeriesAll(providers: providers)
+            : dailySeries(days: max(1, range.dayCount ?? 7), providers: providers)
 
-        d.byProvider = try breakdown(by: .provider, filter: range.filter)
-        d.byModel = try breakdown(by: .model, filter: range.filter)
-        d.byProject = try breakdown(by: .project, filter: range.filter)
-        d.byBranch = try breakdown(by: .branch, filter: range.filter)
+        d.byProvider = try breakdown(by: .provider, filter: filter)
+        d.byModel = try breakdown(by: .model, filter: filter)
+        d.byProject = try breakdown(by: .project, filter: filter)
+        d.byBranch = try breakdown(by: .branch, filter: filter)
 
-        d.unpricedModels = pricing.unpricedModels(in: try models())
+        d.unpricedModels = pricing.unpricedModels(in: try models(filter: filter))
         if !d.unpricedModels.isEmpty {
-            d.unpricedTokens = try unpricedVolume(filter: range.filter).tokens
+            d.unpricedTokens = try unpricedVolume(filter: filter).tokens
         }
         return d
     }
@@ -333,9 +341,14 @@ public struct Reports {
     /// 和 recentSessions 一样的教训：昂贵聚合前先把范围收窄。
     /// 这里 LIMIT 在 CTE 里，代表模型的子查询只对最终这几行跑。
     public func sessions(range: DateRange = .week, provider: Provider? = nil,
-                         search: String? = nil, limit: Int = 200) throws -> [SessionDetail] {
+                         search: String? = nil, limit: Int = 200,
+                         providers: [Provider]? = nil) throws -> [SessionDetail] {
         var filter = range.filter
-        if let provider { filter.providers = [provider] }
+        if let provider {
+            filter.providers = [provider]
+        } else if let providers {
+            filter.providers = providers
+        }
         let (whereSQL, binds) = filter.whereClause
 
         var extra = ""
@@ -422,34 +435,41 @@ public struct Reports {
     }()
 
     /// 一次性组装面板所需的全部数据。面板打开时不做任何解析，只读这里。
-    public func snapshot(budgets: [Budget] = []) throws -> Snapshot {
+    ///
+    /// `providers` 为 nil 时三家都出；关掉的不进列表、不进合计。
+    /// 已启用但当天没用量的仍显示为零 —— 空态可见，用户才知道数据是全的。
+    public func snapshot(budgets: [Budget] = [], providers: [Provider]? = nil) throws -> Snapshot {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: .now)
         let yesterdayStart = cal.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+        let shown = providers ?? Array(Provider.allCases)
+        let todayFilter = Filter(since: todayStart, providers: shown)
+        let yesterdayFilter = Filter(since: yesterdayStart, until: todayStart, providers: shown)
 
         var s = Snapshot()
-        s.today = try totals(filter: Filter(since: todayStart))
-        s.yesterday = try totals(filter: Filter(since: yesterdayStart, until: todayStart))
+        s.enabledProviders = shown
+        s.today = try totals(filter: todayFilter)
+        s.yesterday = try totals(filter: yesterdayFilter)
 
-        // 三家都要出现，当天没用量的显示为零而不是消失 —— 空态可见，用户才知道数据是全的
-        let buckets = try breakdown(by: .provider, filter: Filter(since: todayStart))
+        let buckets = try breakdown(by: .provider, filter: todayFilter)
         let indexed = Dictionary(uniqueKeysWithValues: buckets.compactMap { b in
             Provider(rawValue: b.key).map { ($0, b) }
         })
-        s.todayByProvider = Provider.allCases.map { p in
+        s.todayByProvider = shown.map { p in
             let b = indexed[p]
             return Snapshot.ProviderStat(provider: p, tokens: b?.tokens ?? 0,
                                          cost: b?.cost, sessions: b?.sessions ?? 0)
         }
 
-        s.quotas = try latestQuota()
-        s.recentSessions = try recentSessions(limit: 5)
-        s.rateLimits = try rateLimits(filter: Filter(since: cal.date(byAdding: .day, value: -7, to: .now)))
-        s.dailySeries = try dailySeries(days: 14)
-        s.budgets = try budgetProgress(budgets)
-        s.unpricedModels = pricing.unpricedModels(in: try models())
+        s.quotas = try latestQuota(providers: shown)
+        s.recentSessions = try recentSessions(limit: 5, filter: Filter(providers: shown))
+        s.rateLimits = try rateLimits(filter: Filter(since: cal.date(byAdding: .day, value: -7, to: .now),
+                                                     providers: shown))
+        s.dailySeries = try dailySeries(days: 14, providers: shown)
+        s.budgets = try budgetProgress(budgets, providers: shown)
+        s.unpricedModels = pricing.unpricedModels(in: try models(filter: Filter(providers: shown)))
         if !s.unpricedModels.isEmpty {
-            s.unpricedTokens = try unpricedVolume().tokens
+            s.unpricedTokens = try unpricedVolume(filter: Filter(providers: shown)).tokens
         }
         return s
     }

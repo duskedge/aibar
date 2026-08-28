@@ -25,11 +25,26 @@ struct DashboardView: View {
         }
         .frame(minWidth: 880, minHeight: 560)
         .raisesAppWindow(WindowID.dashboard)
-        .task { if let e = app.engine { model.attach(e) } }
+        .task {
+            model.enabledProviders = Provider.allCases.filter { app.isProviderEnabled($0) }
+            if let e = app.engine { model.attach(e) }
+        }
         .onChange(of: model.range) { _, _ in model.reload() }
         .onChange(of: model.tab) { _, _ in model.reload() }
         .onChange(of: model.providerFilter) { _, _ in model.reload() }
         .onChange(of: model.search) { _, _ in model.reload() }
+        .onChange(of: app.providerEnabledClaude) { _, _ in syncEnabledProviders() }
+        .onChange(of: app.providerEnabledCodex) { _, _ in syncEnabledProviders() }
+        .onChange(of: app.providerEnabledGrok) { _, _ in syncEnabledProviders() }
+    }
+
+    private func syncEnabledProviders() {
+        let shown = Provider.allCases.filter { app.isProviderEnabled($0) }
+        model.enabledProviders = shown
+        if let p = model.providerFilter, !shown.contains(p) {
+            model.providerFilter = nil
+        }
+        model.reload()
     }
 
     // MARK: - 侧栏
@@ -42,7 +57,7 @@ struct DashboardView: View {
                 }
             }
             Section("来源") {
-                ForEach(Provider.allCases, id: \.self) { p in
+                ForEach(model.enabledProviders, id: \.self) { p in
                     let bucket = model.data.byProvider.first { $0.key == p.rawValue }
                     HStack {
                         Circle().fill(p.tint).frame(width: 7, height: 7)
@@ -191,7 +206,7 @@ struct DashboardContent: View {
                     .textFieldStyle(.roundedBorder).frame(width: 260)
                 Picker("", selection: $model.providerFilter) {
                     Text("全部来源").tag(Provider?.none)
-                    ForEach(Provider.allCases, id: \.self) { Text($0.displayName).tag(Provider?.some($0)) }
+                    ForEach(model.enabledProviders, id: \.self) { Text($0.displayName).tag(Provider?.some($0)) }
                 }
                 .frame(width: 140)
                 Spacer()

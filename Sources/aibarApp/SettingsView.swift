@@ -31,7 +31,7 @@ struct SettingsView: View {
                     Picker("显示哪一家", selection: Binding(
                         get: { model.menuBarTarget },
                         set: { model.menuBarTarget = $0 })) {
-                        ForEach(MenuBarTarget.allCases, id: \.self) { target in
+                        ForEach(menuBarTargets, id: \.self) { target in
                             HStack {
                                 if case .provider(let p) = target {
                                     Circle().fill(p.tint).frame(width: 6, height: 6)
@@ -105,7 +105,7 @@ struct SettingsView: View {
     private var targetHint: String {
         switch model.menuBarTarget {
         case .tightest:
-            "自动显示三家里用量最高的一条 —— 常驻图标该主动告诉你哪里快撑不住了。"
+            "自动显示已启用来源里用量最高的一条 —— 常驻图标该主动告诉你哪里快撑不住了。"
         case .provider(let p):
             LiveQuotaService.supportsLiveQuota(p) || p == .codex
                 ? "固定显示 \(p.displayName) 的额度。"
@@ -115,11 +115,15 @@ struct SettingsView: View {
 
     private var displayHint: String {
         switch model.display {
-        case .quota: "显示三家里最紧张的一家。目前只有 Codex 在本地日志中回传官方额度；Claude 与 Grok 需要官方接口查询（计划于 M4）。"
+        case .quota: "显示已启用来源里最紧张的一家。目前只有 Codex 在本地日志中回传官方额度；Claude 与 Grok 需要官方接口查询（计划于 M4）。"
         case .cost: "今日等价 API 成本。订阅制下这笔钱并未真实支出，它量化的是订阅的价值。"
-        case .tokens: "今日三家 token 合计。"
+        case .tokens: "今日已启用数据源的 token 合计。"
         case .iconOnly: "只显示图标，适合刘海屏空间紧张时。"
         }
+    }
+
+    private var menuBarTargets: [MenuBarTarget] {
+        [.tightest] + Provider.allCases.filter { model.isProviderEnabled($0) }.map(MenuBarTarget.provider)
     }
 
     // MARK: - 预算
@@ -187,24 +191,31 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(Provider.allCases, id: \.self) { p in
-                    HStack(alignment: .top) {
-                        Circle().fill(p.tint).frame(width: 7, height: 7).padding(.top, 6)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.displayName).font(.system(size: 12, weight: .medium))
-                            Text(LiveQuotaService.availability(for: p))
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .top) {
+                            Circle().fill(p.tint).frame(width: 7, height: 7).padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.displayName).font(.system(size: 12, weight: .medium))
+                                Text(LiveQuotaService.availability(for: p))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Spacer()
+                            if p == .claudeCode {
+                                Toggle("", isOn: $model.liveQuotaClaude)
+                                    .labelsHidden()
+                                    .onChange(of: model.liveQuotaClaude) { _, _ in
+                                        Task { await model.applyNetworkSettings() }
+                                    }
+                                    .disabled(model.offlineMode || !model.providerEnabledClaude)
+                            } else {
+                                Text("不适用").font(.caption2).foregroundStyle(.tertiary)
+                            }
                         }
-                        Spacer()
-                        if p == .claudeCode {
-                            Toggle("", isOn: $model.liveQuotaClaude)
-                                .labelsHidden()
-                                .onChange(of: model.liveQuotaClaude) { _, _ in
-                                    Task { await model.applyNetworkSettings() }
-                                }
-                                .disabled(model.offlineMode)
-                        } else {
-                            Text("不适用").font(.caption2).foregroundStyle(.tertiary)
+                        if p == .claudeCode, !model.providerEnabledClaude {
+                            Text("Claude Code 数据源已关闭，接口也不会再查。")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                                .padding(.leading, 13)
                         }
                     }
                 }
@@ -294,22 +305,30 @@ struct SettingsView: View {
 
     private var dataSources: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("aibar 只读取以下目录中的用量字段，不读取对话正文，全程不联网。")
+            Text("关掉某一家后：停止读取它的本地日志、停止对应的接口查询，面板和菜单栏也不再显示它的数据。已入库的记录还在，重新打开会继续用。")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(Provider.allCases, id: \.self) { provider in
                 let paths = pathsFor(provider)
+                let on = model.isProviderEnabled(provider)
+                let found = paths.contains { FileManager.default.fileExists(atPath: $0) }
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Circle().fill(provider.tint).frame(width: 7, height: 7)
+                        Circle().fill(on ? provider.tint : Color.secondary.opacity(0.35))
+                            .frame(width: 7, height: 7)
                         Text(provider.displayName).font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(on ? .primary : .secondary)
                         Spacer()
-                        Text(paths.contains(where: { FileManager.default.fileExists(atPath: $0) })
-                             ? "已找到" : "未安装")
+                        Text(on ? (found ? "已找到" : "未安装") : "已关闭")
                             .font(.caption2)
-                            .foregroundStyle(paths.contains(where: { FileManager.default.fileExists(atPath: $0) })
-                                             ? Color.green : Color.secondary)
+                            .foregroundStyle(on && found ? Color.green : Color.secondary)
+                        Toggle("", isOn: Binding(
+                            get: { model.isProviderEnabled(provider) },
+                            set: { model.setProvider(provider, enabled: $0) }))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
                     }
                     ForEach(paths, id: \.self) { p in
                         Text(p.replacingOccurrences(
@@ -318,6 +337,7 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+                .opacity(on ? 1 : 0.7)
             }
 
             Spacer()
@@ -325,7 +345,7 @@ struct SettingsView: View {
             HStack {
                 Button("重建索引") { Task { await model.rebuild() } }
                     .disabled(model.isRefreshing)
-                Text("完整重新解析所有日志。数据只在本机，重建不会丢失任何东西。")
+                Text("会清空整个索引，然后只重新扫描还开着的数据源。关掉的那家重新打开后会再扫回来。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }

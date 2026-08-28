@@ -37,6 +37,41 @@ struct SnapshotTests {
         #expect(codex.sessions == 0)
     }
 
+    @Test("关掉的 provider 不进快照合计与列表")
+    func disabledProviderHidden() throws {
+        let s = try store([
+            event(.claudeCode, "claude-opus-5", tokens: 1000, id: "c"),
+            event(.codex, "gpt-5.6", tokens: 2000, id: "x"),
+            event(.grok, "grok-4.6", tokens: 3000, id: "g"),
+        ])
+        let snap = try Reports(store: s).snapshot(providers: [.claudeCode])
+        #expect(snap.enabledProviders == [.claudeCode])
+        #expect(snap.todayByProvider.map(\.provider) == [.claudeCode])
+        #expect(snap.today.tokens == 1000)
+        #expect(snap.recentSessions.allSatisfy { $0.provider == .claudeCode })
+        #expect(snap.dailySeries.allSatisfy { ($0.byProvider[.codex] ?? 0) == 0 })
+        #expect(snap.dailySeries.allSatisfy { ($0.byProvider[.grok] ?? 0) == 0 })
+    }
+
+    @Test("关掉全部时快照为空，库里的数也不展示")
+    func allProvidersDisabled() throws {
+        let s = try store([event(.claudeCode, "claude-opus-5", tokens: 1000)])
+        let snap = try Reports(store: s).snapshot(providers: [])
+        #expect(snap.isEmpty)
+        #expect(snap.todayByProvider.isEmpty)
+        #expect(snap.today.tokens == 0)
+        #expect(snap.enabledProviders.isEmpty)
+    }
+
+    @Test("扫描跳过未启用的 provider")
+    func scanSkipsDisabled() throws {
+        let s = try UsageStore(path: ":memory:")
+        let summary = try Scanner(store: s).scan(enabled: [])
+        #expect(summary.filesScanned == 0)
+        #expect(summary.eventsInserted == 0)
+        #expect(summary.filesSkipped == 0)
+    }
+
     @Test("完全没有数据时 isEmpty 为真")
     func emptySnapshot() throws {
         let snap = try Reports(store: try store([])).snapshot()
